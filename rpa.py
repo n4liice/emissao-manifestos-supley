@@ -3,6 +3,30 @@ import asyncio
 from playwright.async_api import async_playwright
 
 
+def _normalizar_frete(valor: str) -> str:
+    """
+    Converte qualquer formato de valor para os dígitos que o campo aceita.
+      "3.250,00"  →  "3250"   (BR, sem centavos)
+      "2.421,60"  →  "242160" (BR, com centavos)
+      "2421.6"    →  "242160" (US decimal)
+      "2421.60"   →  "242160" (US decimal)
+      "2421"      →  "2421"   (inteiro puro)
+    """
+    v = valor.strip().replace("R$", "").replace(" ", "")
+    if "," in v:
+        # Formato BR: separador de milhar=ponto, decimal=vírgula
+        inteiro, centavos = v.split(",", 1)
+        inteiro = inteiro.replace(".", "")
+        centavos = centavos[:2].ljust(2, "0")
+    elif "." in v:
+        # Formato US/numérico: decimal=ponto
+        inteiro, centavos = v.split(".", 1)
+        centavos = centavos[:2].ljust(2, "0")
+    else:
+        inteiro, centavos = v, "00"
+    return inteiro if centavos == "00" else inteiro + centavos
+
+
 async def emitir_manifesto(config: dict, headless: bool = True) -> str:
     """Executa o RPA completo e retorna o número do manifesto criado."""
     async with async_playwright() as p:
@@ -199,7 +223,7 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
     print(f"Cidade destino: {cidade_destino}")
 
     print(f"Preenchendo valor do frete: R$ {valor_frete}")
-    apenas_digitos = valor_frete.split(",")[0].replace(".", "")
+    apenas_digitos = _normalizar_frete(valor_frete)
     campo = page.locator("#closed_freight_subtotal")
     await campo.click()
     await page.keyboard.press("Control+a")
