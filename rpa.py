@@ -29,23 +29,30 @@ def _normalizar_frete(valor: str) -> str:
 
 async def emitir_manifesto(config: dict, headless: bool = True) -> str:
     """Executa o RPA completo e retorna o número do manifesto criado."""
+    print(f"[RPA] Iniciando | motorista={config['motorista']} | veiculo={config['placa_veiculo']} | frete={config['valor_frete']}")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
         context = await browser.new_context()
         page = await context.new_page()
         try:
+            print("[RPA] Etapa 1/8: Login")
             await login(page, config)
+            print("[RPA] Etapa 2/8: Novo manifesto")
             await novo_manifesto(page, config)
+            print("[RPA] Etapa 3/8: Motorista")
             await preencher_motorista(page, config["motorista"])
+            print("[RPA] Etapa 4/8: Veiculo/Carreta")
             await verificar_e_corrigir_veiculo(page, config["placa_veiculo"])
             if config.get("placa_carreta"):
                 await verificar_e_corrigir_carreta(page, config["placa_carreta"])
+            print("[RPA] Etapa 5/8: Classificacao")
             await preencher_classificacao(page, config["classificacao"])
+            print("[RPA] Etapa 6/8: 1o salvamento")
             await salvar_manifesto(page)
-
+            print("[RPA] Etapa 7/8: Notas fiscais")
             for nota in config["notas_fiscais"]:
                 await inserir_nota_fiscal(page, nota)
-
+            print("[RPA] Etapa 8/8: Vale-Frete")
             await ir_para_aba_vale_frete(page)
             await preencher_frete(
                 page,
@@ -54,7 +61,9 @@ async def emitir_manifesto(config: dict, headless: bool = True) -> str:
                 config["valor_frete"],
             )
             await salvar_manifesto(page)
-            return await obter_numero_manifesto(page)
+            numero = await obter_numero_manifesto(page)
+            print(f"[RPA] Concluido! Manifesto nr {numero}")
+            return numero
         finally:
             await browser.close()
 
@@ -230,8 +239,9 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
     await page.keyboard.press("Delete")
     await page.wait_for_timeout(300)
     await campo.type(apenas_digitos)
-    await page.wait_for_timeout(500)
-    print(f"Valor frete: R$ {valor_frete}")
+    await page.keyboard.press("Tab")  # dispara blur para o Vue-masked confirmar o valor
+    await page.wait_for_timeout(800)
+    print(f"Valor frete: R$ {valor_frete} (digitado: {apenas_digitos})")
 
 
 async def obter_numero_manifesto(page):
