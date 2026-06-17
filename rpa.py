@@ -236,9 +236,8 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
     campo = page.locator("#closed_freight_subtotal")
     await campo.click()
     await page.keyboard.press("Control+a")
-    await page.keyboard.press("Delete")
     await page.wait_for_timeout(300)
-    await campo.type(apenas_digitos)
+    await campo.type(apenas_digitos)  # substitui o conteúdo selecionado
     await page.keyboard.press("Tab")  # dispara blur para o Vue-masked confirmar o valor
     await page.wait_for_timeout(800)
     print(f"Valor frete: R$ {valor_frete} (digitado: {apenas_digitos})")
