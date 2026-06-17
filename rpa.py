@@ -6,13 +6,13 @@ from playwright.async_api import async_playwright
 def _normalizar_frete(valor: str) -> str:
     """
     Converte qualquer formato de valor para os dígitos que o campo aceita.
-      "3.250,00"  →  "3250"   (BR, sem centavos)
-      "2.421,60"  →  "242160" (BR, com centavos)
-      "2421.6"    →  "242160" (US decimal)
-      "2421.60"   →  "242160" (US decimal)
-      "2421"      →  "2421"   (inteiro puro)
+      "R$ 3.250,00"  →  "3250"   (BR, sem centavos)
+      "R$ 2.421,60"  →  "242160" (BR, com centavos)
+      "2421.6"       →  "242160" (US decimal)
+      "2421"         →  "2421"   (inteiro puro)
     """
-    v = valor.strip().replace("R$", "").replace(" ", "")
+    # Remove tudo que não for dígito, ponto ou vírgula (cobre R$, espaços, \xa0, etc.)
+    v = re.sub(r'[^\d.,]', '', valor)
     if "," in v:
         # Formato BR: separador de milhar=ponto, decimal=vírgula
         inteiro, centavos = v.split(",", 1)
