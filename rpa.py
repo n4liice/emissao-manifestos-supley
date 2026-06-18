@@ -5,26 +5,25 @@ from playwright.async_api import async_playwright
 
 def _normalizar_frete(valor: str) -> str:
     """
-    Converte qualquer formato de valor para os dígitos que o campo aceita.
-      "R$ 3.250,00"  →  "3250"   (BR, sem centavos)
-      "R$ 2.421,60"  →  "242160" (BR, com centavos)
-      "2421.6"       →  "242160" (US decimal)
-      "2421"         →  "2421"   (inteiro puro)
+    Converte qualquer formato de valor para o que o campo vue-masked aceita.
+    O campo aceita até 4 dígitos inteiros; dígitos extras transbordam para os centavos.
+    Para centavos não-zero, digitar com vírgula move o cursor para o campo decimal.
+      "R$ 3.250,00"  →  "3250"     (sem centavos: digita só a parte inteira)
+      "R$ 692,31"    →  "692,31"   (com centavos: vírgula move cursor pro decimal)
+      "2421.6"       →  "2421,60"  (US decimal → mesmo tratamento)
+      "3250"         →  "3250"     (inteiro puro)
     """
-    # Remove tudo que não for dígito, ponto ou vírgula (cobre R$, espaços, \xa0, etc.)
     v = re.sub(r'[^\d.,]', '', valor)
     if "," in v:
-        # Formato BR: separador de milhar=ponto, decimal=vírgula
         inteiro, centavos = v.split(",", 1)
         inteiro = inteiro.replace(".", "")
         centavos = centavos[:2].ljust(2, "0")
     elif "." in v:
-        # Formato US/numérico: decimal=ponto
         inteiro, centavos = v.split(".", 1)
         centavos = centavos[:2].ljust(2, "0")
     else:
         inteiro, centavos = v, "00"
-    return inteiro if centavos == "00" else inteiro + centavos
+    return inteiro if centavos == "00" else f"{inteiro},{centavos}"
 
 
 async def emitir_manifesto(config: dict, headless: bool = True) -> str:
