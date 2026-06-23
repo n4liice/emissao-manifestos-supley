@@ -3,16 +3,8 @@ import asyncio
 from playwright.async_api import async_playwright
 
 
-def _normalizar_frete(valor: str) -> str:
-    """
-    Converte qualquer formato de valor para o que o campo vue-masked aceita.
-    O campo aceita até 4 dígitos inteiros; dígitos extras transbordam para os centavos.
-    Para centavos não-zero, digitar com vírgula move o cursor para o campo decimal.
-      "R$ 3.250,00"  →  "3250"     (sem centavos: digita só a parte inteira)
-      "R$ 692,31"    →  "692,31"   (com centavos: vírgula move cursor pro decimal)
-      "2421.6"       →  "2421,60"  (US decimal → mesmo tratamento)
-      "3250"         →  "3250"     (inteiro puro)
-    """
+def _normalizar_frete(valor: str) -> tuple:
+    """Retorna (inteiro, centavos). Ex: 'R$ 2.421,60' -> ('2421', '60')"""
     v = re.sub(r'[^\d.,]', '', valor)
     if "," in v:
         inteiro, centavos = v.split(",", 1)
@@ -23,7 +15,7 @@ def _normalizar_frete(valor: str) -> str:
         centavos = centavos[:2].ljust(2, "0")
     else:
         inteiro, centavos = v, "00"
-    return inteiro if centavos == "00" else f"{inteiro},{centavos}"
+    return inteiro, centavos
 
 
 async def emitir_manifesto(config: dict, headless: bool = True) -> str:
@@ -231,15 +223,24 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
     print(f"Cidade destino: {cidade_destino}")
 
     print(f"Preenchendo valor do frete: R$ {valor_frete}")
-    apenas_digitos = _normalizar_frete(valor_frete)
+    inteiro, centavos = _normalizar_frete(valor_frete)
     campo = page.locator("#closed_freight_subtotal")
+    await campo.scroll_into_view_if_needed()
     await campo.click()
     await page.keyboard.press("Control+a")
     await page.wait_for_timeout(300)
-    await campo.type(apenas_digitos)  # substitui o conteúdo selecionado
-    await page.keyboard.press("Tab")  # dispara blur para o Vue-masked confirmar o valor
+    # Digita parte inteira com delay para a máscara processar cada dígito
+    await page.keyboard.type(inteiro, delay=100)
+    await page.wait_for_timeout(400)
+    if centavos != "00":
+        # Vírgula move o cursor para o campo decimal; pausa para a máscara registrar
+        await page.keyboard.press(",")
+        await page.wait_for_timeout(400)
+        await page.keyboard.type(centavos, delay=100)
+        await page.wait_for_timeout(300)
+    await page.keyboard.press("Tab")
     await page.wait_for_timeout(800)
-    print(f"Valor frete: R$ {valor_frete} (digitado: {apenas_digitos})")
+    print(f"Valor frete: R$ {valor_frete} (inteiro={inteiro}, centavos={centavos})")
 
 
 async def obter_numero_manifesto(page):
