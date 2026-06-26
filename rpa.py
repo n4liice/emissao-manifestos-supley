@@ -1,6 +1,12 @@
 import re
 import asyncio
+from datetime import datetime
 from playwright.async_api import async_playwright
+
+
+def _log(msg: str):
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{ts}] {msg}", flush=True)
 
 
 def _normalizar_frete(valor: str) -> tuple:
@@ -19,31 +25,30 @@ def _normalizar_frete(valor: str) -> tuple:
 
 
 async def emitir_manifesto(config: dict, headless: bool = True) -> str:
-    """Executa o RPA completo e retorna o número do manifesto criado."""
-    print(f"[RPA] Iniciando | motorista={config['motorista']} | veiculo={config['placa_veiculo']} | frete={config['valor_frete']}")
+    _log(f"[RPA] Iniciando | motorista={config['motorista']} | veiculo={config['placa_veiculo']} | frete={config['valor_frete']}")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
         context = await browser.new_context()
         page = await context.new_page()
         try:
-            print("[RPA] Etapa 1/8: Login")
+            _log("[RPA] Etapa 1/8: Login")
             await login(page, config)
-            print("[RPA] Etapa 2/8: Novo manifesto")
+            _log("[RPA] Etapa 2/8: Novo manifesto")
             await novo_manifesto(page, config)
-            print("[RPA] Etapa 3/8: Motorista")
+            _log("[RPA] Etapa 3/8: Motorista")
             await preencher_motorista(page, config["motorista"])
-            print("[RPA] Etapa 4/8: Veiculo/Carreta")
+            _log("[RPA] Etapa 4/8: Veiculo/Carreta")
             await verificar_e_corrigir_veiculo(page, config["placa_veiculo"])
             if config.get("placa_carreta"):
                 await verificar_e_corrigir_carreta(page, config["placa_carreta"])
-            print("[RPA] Etapa 5/8: Classificacao")
+            _log("[RPA] Etapa 5/8: Classificacao")
             await preencher_classificacao(page, config["classificacao"])
-            print("[RPA] Etapa 6/8: 1o salvamento")
+            _log("[RPA] Etapa 6/8: 1o salvamento")
             await salvar_manifesto(page)
-            print("[RPA] Etapa 7/8: Notas fiscais")
+            _log("[RPA] Etapa 7/8: Notas fiscais")
             for nota in config["notas_fiscais"]:
                 await inserir_nota_fiscal(page, nota)
-            print("[RPA] Etapa 8/8: Vale-Frete")
+            _log("[RPA] Etapa 8/8: Vale-Frete")
             await ir_para_aba_vale_frete(page)
             await preencher_frete(
                 page,
@@ -53,7 +58,7 @@ async def emitir_manifesto(config: dict, headless: bool = True) -> str:
             )
             await salvar_manifesto(page)
             numero = await obter_numero_manifesto(page)
-            print(f"[RPA] Concluido! Manifesto nr {numero}")
+            _log(f"[RPA] Concluido! Manifesto nr {numero}")
             return numero
         finally:
             await browser.close()
@@ -63,14 +68,14 @@ async def login(page, config):
     await page.goto(f"{config['url_base']}/manifests")
     await page.wait_for_load_state("networkidle")
     if "/sign_in" in page.url:
-        print("Sessao expirada. Fazendo login...")
+        _log("Sessao expirada. Fazendo login...")
         await page.fill("input[name='user[email]']", config["email"])
         await page.fill("input[name='user[password]']", config["senha"])
         await page.click("input[type='submit'], button:has-text('Entrar')")
         await page.wait_for_url("**/manifests**", timeout=15000)
-        print("Login realizado.")
+        _log("Login realizado.")
     else:
-        print("Sessao ativa.")
+        _log("Sessao ativa.")
 
 
 async def novo_manifesto(page, config):
@@ -80,21 +85,36 @@ async def novo_manifesto(page, config):
     await page.wait_for_url("**/manifests/new**", timeout=10000)
     await page.wait_for_load_state("networkidle")
     await page.wait_for_timeout(3000)
-    print("Pagina de novo manifesto aberta.")
+    _log("Pagina de novo manifesto aberta.")
 
 
 async def _selecionar_via_modal(page, div_class, termo, label):
     locator = page.locator(f"div.{div_class} a.listModal")
+    await locator.wait_for(state="attached", timeout=10000)
     await locator.scroll_into_view_if_needed()
     await locator.click()
     await page.wait_for_selector("input[placeholder='Filtrar...']", timeout=8000)
     await page.fill("input[placeholder='Filtrar...']", termo)
     await page.keyboard.press("Enter")
-    await page.wait_for_timeout(2000)
-    await page.click("table tbody tr:first-child button:has-text('Selecionar'), "
-                     "table tbody tr:first-child a:has-text('Selecionar')")
+    await page.wait_for_timeout(2500)
+
+    # Verifica se retornou resultados
+    sem_resultado = page.locator("table tbody tr td:has-text('Nenhum resultado'), table tbody:not(:has(tr))")
+    try:
+        if await sem_resultado.first.is_visible(timeout=1000):
+            raise Exception(f"{label} '{termo}' nao encontrado(a) no sistema.")
+    except Exception as e:
+        if "nao encontrado" in str(e):
+            raise
+        pass
+
+    await page.click(
+        "table tbody tr:first-child button:has-text('Selecionar'), "
+        "table tbody tr:first-child a:has-text('Selecionar')",
+        timeout=10000
+    )
     await page.wait_for_timeout(1500)
-    print(f"{label} '{termo}' selecionado(a).")
+    _log(f"{label} '{termo}' selecionado(a).")
 
 
 async def preencher_motorista(page, motorista):
@@ -108,11 +128,11 @@ async def verificar_e_corrigir_veiculo(page, placa_esperada):
         "el => el.options[el.selectedIndex]?.text || ''"
     )
     placa_atual = placa_atual.strip().upper()
-    print(f"Placa atual: '{placa_atual}' | Esperada: '{placa_esperada}'")
+    _log(f"Placa atual: '{placa_atual}' | Esperada: '{placa_esperada}'")
     if placa_esperada.upper() not in placa_atual:
         await _selecionar_via_modal(page, "manifest_vehicle", placa_esperada, "Veiculo")
     else:
-        print("Placa correta.")
+        _log("Placa correta.")
 
 
 async def verificar_e_corrigir_carreta(page, placa_esperada):
@@ -122,15 +142,16 @@ async def verificar_e_corrigir_carreta(page, placa_esperada):
         "el => el.options[el.selectedIndex]?.text || ''"
     )
     placa_atual = placa_atual.strip().upper()
-    print(f"Carreta atual: '{placa_atual}' | Esperada: '{placa_esperada}'")
+    _log(f"Carreta atual: '{placa_atual}' | Esperada: '{placa_esperada}'")
     if placa_esperada.upper() not in placa_atual:
         await _selecionar_via_modal(page, "manifest_trailer_1", placa_esperada, "Carreta")
     else:
-        print("Carreta correta.")
+        _log("Carreta correta.")
 
 
 async def preencher_classificacao(page, classificacao):
     container = page.locator("#select2-manifest_classification-container")
+    await container.wait_for(state="attached", timeout=10000)
     await container.scroll_into_view_if_needed()
     await container.click()
     search = page.locator(".select2-dropdown .select2-search__field, "
@@ -140,30 +161,32 @@ async def preencher_classificacao(page, classificacao):
     await page.wait_for_timeout(2000)
     await page.click(f".select2-results__option:has-text('{classificacao}')")
     await page.wait_for_timeout(500)
-    print(f"Classificacao '{classificacao}' selecionada.")
+    _log(f"Classificacao '{classificacao}' selecionada.")
 
 
 async def salvar_manifesto(page):
     try:
         if await page.locator(".swal2-container.swal2-shown").is_visible(timeout=1500):
-            print("Modal SweetAlert aberto — fechando antes de salvar...")
+            _log("Modal SweetAlert aberto — fechando antes de salvar...")
             await page.click(".swal2-confirm, .swal2-cancel, button:has-text('OK')", timeout=3000)
             await page.wait_for_timeout(1000)
     except Exception:
         pass
 
     btn = page.locator("button.btn-primary:has(.fa-save), button.btn-primary:has-text('Salvar')")
+    await btn.last.wait_for(state="attached", timeout=10000)
     await btn.last.scroll_into_view_if_needed()
     await btn.last.click()
     await page.wait_for_selector("text=Tem certeza que deseja salvar", timeout=5000)
     await page.click("button:has-text('Sim')")
     await page.wait_for_load_state("networkidle")
     await page.wait_for_timeout(2000)
-    print("Manifesto salvo.")
+    _log("Manifesto salvo.")
 
 
 async def inserir_nota_fiscal(page, nota):
     container = page.locator("#selected-tab-deliveries #select2-term-container")
+    await container.wait_for(state="attached", timeout=10000)
     await container.scroll_into_view_if_needed()
     await container.click()
     await page.wait_for_timeout(800)
@@ -176,29 +199,30 @@ async def inserir_nota_fiscal(page, nota):
     await page.wait_for_timeout(4000)
     try:
         if await page.is_visible("text=Frete possui entrega vinculada", timeout=2000):
-            print(f"Nota {nota} ja vinculada (aviso ignorado).")
+            _log(f"Nota {nota} ja vinculada (aviso ignorado).")
             await page.click("button:has-text('OK')")
             await page.wait_for_timeout(1000)
     except Exception:
         pass
-    print(f"Nota fiscal '{nota}' inserida.")
-    print("Recarregando pagina para confirmar insercao da NF...")
+    _log(f"Nota fiscal '{nota}' inserida.")
+    _log("Recarregando pagina para confirmar insercao da NF...")
     await page.reload()
     await page.wait_for_load_state("networkidle")
     await page.wait_for_timeout(3000)
-    print("Pagina recarregada.")
+    _log("Pagina recarregada.")
 
 
 async def ir_para_aba_vale_frete(page):
     aba = page.locator("a:has-text('Vale-Frete'), li:has-text('Vale-Frete') a")
+    await aba.first.wait_for(state="visible", timeout=10000)
     await aba.first.scroll_into_view_if_needed()
     await aba.first.click()
     await page.wait_for_timeout(1500)
-    print("Aba Vale-Frete aberta.")
+    _log("Aba Vale-Frete aberta.")
 
 
 async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
-    print(f"Preenchendo cidade origem: {cidade_origem}")
+    _log(f"Preenchendo cidade origem: {cidade_origem}")
     await page.click("#select2-calculation_origin_city-container")
     await page.wait_for_timeout(800)
     await page.wait_for_selector(".select2-container--open input.select2-search__field", state="visible", timeout=5000)
@@ -206,9 +230,9 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
     await page.wait_for_selector(".select2-results__option:not(.select2-results__option--loading)", state="visible", timeout=10000)
     await page.click(f".select2-results__option:has-text('{cidade_origem}')")
     await page.wait_for_timeout(800)
-    print(f"Cidade origem: {cidade_origem}")
+    _log(f"Cidade origem: {cidade_origem}")
 
-    print(f"Preenchendo cidade destino: {cidade_destino}")
+    _log(f"Preenchendo cidade destino: {cidade_destino}")
     await page.click("#select2-calculation_destination_city-container")
     await page.wait_for_timeout(800)
     await page.wait_for_selector(".select2-container--open input.select2-search__field", state="visible", timeout=5000)
@@ -220,27 +244,26 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
     )
     await page.click("#select2-calculation_destination_city-results .select2-results__option:first-child")
     await page.wait_for_timeout(800)
-    print(f"Cidade destino: {cidade_destino}")
+    _log(f"Cidade destino: {cidade_destino}")
 
-    print(f"Preenchendo valor do frete: R$ {valor_frete}")
+    _log(f"Preenchendo valor do frete: {valor_frete}")
     inteiro, centavos = _normalizar_frete(valor_frete)
     campo = page.locator("#closed_freight_subtotal")
+    await campo.wait_for(state="attached", timeout=10000)
     await campo.scroll_into_view_if_needed()
     await campo.click()
     await page.keyboard.press("Control+a")
     await page.wait_for_timeout(300)
-    # Digita parte inteira com delay para a máscara processar cada dígito
     await page.keyboard.type(inteiro, delay=100)
     await page.wait_for_timeout(400)
     if centavos != "00":
-        # Vírgula move o cursor para o campo decimal; pausa para a máscara registrar
         await page.keyboard.press(",")
         await page.wait_for_timeout(400)
         await page.keyboard.type(centavos, delay=100)
         await page.wait_for_timeout(300)
     await page.keyboard.press("Tab")
     await page.wait_for_timeout(800)
-    print(f"Valor frete: R$ {valor_frete} (inteiro={inteiro}, centavos={centavos})")
+    _log(f"Valor frete: {valor_frete} (inteiro={inteiro}, centavos={centavos})")
 
 
 async def obter_numero_manifesto(page):
