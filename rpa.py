@@ -60,6 +60,7 @@ async def emitir_manifesto(config: dict, headless: bool = True) -> str:
                 config["cidade_origem"],
                 config["cidade_destino"],
                 config["valor_frete"],
+                config["classificacao"],
             )
             await salvar_manifesto(page)
             numero = await obter_numero_manifesto(page)
@@ -236,7 +237,11 @@ async def ir_para_aba_vale_frete(page):
     _log("Aba Vale-Frete aberta.")
 
 
-async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
+# Classificações que calculam o frete automaticamente pela tabela de preços
+CLASSIFICACOES_CALCULO_AUTOMATICO = {"ARCOR"}
+
+
+async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, classificacao=""):
     _log(f"Preenchendo cidade origem: {cidade_origem}")
     await page.click("#select2-calculation_origin_city-container")
     await page.wait_for_timeout(800)
@@ -261,24 +266,28 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete):
     await page.wait_for_timeout(800)
     _log(f"Cidade destino: {cidade_destino}")
 
-    _log(f"Preenchendo valor do frete: {valor_frete}")
-    inteiro, centavos = _normalizar_frete(valor_frete)
-    campo = page.locator("#closed_freight_subtotal")
-    await campo.wait_for(state="attached", timeout=10000)
-    await campo.scroll_into_view_if_needed()
-    await campo.click()
-    await page.keyboard.press("Control+a")
-    await page.wait_for_timeout(300)
-    await page.keyboard.type(inteiro, delay=100)
-    await page.wait_for_timeout(400)
-    if centavos != "00":
-        await page.keyboard.press(",")
-        await page.wait_for_timeout(400)
-        await page.keyboard.type(centavos, delay=100)
+    if classificacao.upper() in CLASSIFICACOES_CALCULO_AUTOMATICO:
+        _log(f"Classificacao '{classificacao}' calcula frete automaticamente. Aguardando 5s...")
+        await page.wait_for_timeout(5000)
+        _log("Calculo automatico concluido.")
+    else:
+        _log(f"Preenchendo valor do frete: {valor_frete}")
+        inteiro, centavos = _normalizar_frete(valor_frete)
+        campo = page.locator("#closed_freight_subtotal")
+        await campo.wait_for(state="attached", timeout=10000)
+        await campo.scroll_into_view_if_needed()
+        await campo.click()
+        await page.keyboard.press("Control+a")
         await page.wait_for_timeout(300)
+        await page.keyboard.type(inteiro, delay=100)
+        await page.wait_for_timeout(400)
+        if centavos != "00":
+            await page.keyboard.press(",")
+            await page.wait_for_timeout(400)
+            await page.keyboard.type(centavos, delay=100)
+            await page.wait_for_timeout(300)
     await page.keyboard.press("Tab")
     await page.wait_for_timeout(800)
-    _log(f"Valor frete: {valor_frete} (inteiro={inteiro}, centavos={centavos})")
 
 
 async def obter_numero_manifesto(page):
