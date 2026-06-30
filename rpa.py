@@ -46,7 +46,12 @@ async def emitir_manifesto(config: dict, headless: bool = True) -> str:
             _log("[RPA] Etapa 6/8: 1o salvamento")
             await salvar_manifesto(page)
             _log("[RPA] Etapa 7/8: Notas fiscais")
-            for nota in config["notas_fiscais"]:
+            notas_validas = [
+                n for n in config["notas_fiscais"]
+                if n and n.strip() not in ("", "-", "null", "N/A", "n/a", "0")
+            ]
+            _log(f"Notas a inserir: {notas_validas}")
+            for nota in notas_validas:
                 await inserir_nota_fiscal(page, nota)
             _log("[RPA] Etapa 8/8: Vale-Frete")
             await ir_para_aba_vale_frete(page)
@@ -185,8 +190,17 @@ async def salvar_manifesto(page):
 
 
 async def inserir_nota_fiscal(page, nota):
+    # Garante que a aba Entregas está ativa antes de interagir com o campo de NF
+    try:
+        aba = page.locator("a:has-text('Entregas'), li:has-text('Entregas') a")
+        await aba.first.wait_for(state="visible", timeout=5000)
+        await aba.first.click()
+        await page.wait_for_timeout(1000)
+    except Exception:
+        pass
+
     container = page.locator("#selected-tab-deliveries #select2-term-container")
-    await container.wait_for(state="attached", timeout=10000)
+    await container.wait_for(state="visible", timeout=10000)
     await container.scroll_into_view_if_needed()
     await container.click()
     await page.wait_for_timeout(800)
