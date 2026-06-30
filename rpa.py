@@ -190,18 +190,19 @@ async def salvar_manifesto(page):
 
 
 async def inserir_nota_fiscal(page, nota):
-    # Garante que a aba Entregas está ativa antes de interagir com o campo de NF
-    try:
-        aba = page.locator("a:has-text('Entregas'), li:has-text('Entregas') a")
-        await aba.first.wait_for(state="visible", timeout=5000)
-        await aba.first.click()
-        await page.wait_for_timeout(1000)
-    except Exception:
-        pass
+    # Clicar na aba Entregas garante que Vue renderiza e estabiliza o conteúdo
+    aba = page.locator("a:has-text('Entregas'), li:has-text('Entregas') a")
+    await aba.first.wait_for(state="visible", timeout=10000)
+    await aba.first.click()
+    await page.wait_for_timeout(1500)  # aguarda Vue terminar o ciclo de re-render
 
     container = page.locator("#selected-tab-deliveries #select2-term-container")
     await container.wait_for(state="visible", timeout=10000)
-    await container.scroll_into_view_if_needed()
+    await page.wait_for_timeout(500)  # margem extra para estabilidade pós-render
+    # Usar JS para scroll evita race condition com detachment do Vue
+    await page.evaluate(
+        "document.querySelector('#selected-tab-deliveries #select2-term-container')?.scrollIntoView()"
+    )
     await container.click()
     await page.wait_for_timeout(800)
     await page.keyboard.type(nota)
