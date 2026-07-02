@@ -246,13 +246,12 @@ async def inserir_referencia_oc(page, referencia):
     await page.wait_for_timeout(2000)
 
     await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
-    btn_entregas = page.locator("button:has(i.fa-plus):has-text('Entregas')")
+    btn_entregas = page.locator('[data-target="#search-freights"]')
     await btn_entregas.wait_for(state="visible", timeout=15000)
     await btn_entregas.scroll_into_view_if_needed()
     await btn_entregas.click()
     await page.wait_for_timeout(1000)
 
-    # fallback: abre o modal via jQuery se o clique nao disparou
     modal_visivel = await page.locator("#search-freights").is_visible()
     if not modal_visivel:
         _log("OC Step 1: modal nao abriu via click, abrindo via jQuery...")
@@ -280,10 +279,10 @@ async def inserir_referencia_oc(page, referencia):
     await page.wait_for_timeout(800)
 
     _log(f"OC Step 4: Preenchendo N° Referencia '{referencia}'")
-    ref_field = page.locator("#search-freights input#search_freights_reference_number")
-    await ref_field.wait_for(state="visible", timeout=15000)
-    await ref_field.clear()
-    await ref_field.fill(referencia)
+    await page.evaluate(
+        f"document.querySelector('#search-freights input#search_freights_reference_number').value = '{referencia}'"
+    )
+    await page.wait_for_timeout(500)
 
     _log("OC Step 5: Clicando na lupa")
     search_btn = page.locator("#search-freights button#submit[type='submit']")
