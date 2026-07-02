@@ -264,17 +264,20 @@ async def inserir_referencia_oc(page, referencia):
     await page.evaluate("$('#search-freights a[href=\"#tab-freights\"]').tab('show')")
     await page.wait_for_timeout(800)
 
-    _log("OC Step 3: Limpando filtro de datas via JS")
-    await page.evaluate("""
-        () => {
-            const field = document.querySelector('#tab-freights input#search_freights_service_at');
-            if (field) {
-                field.value = '';
-                field.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        }
-    """)
+    _log("OC Step 3: Limpando filtro de datas")
+    date_field = page.locator("#tab-freights input#search_freights_service_at").first
+    await date_field.click()
+    await page.wait_for_selector(".daterangepicker", state="visible", timeout=10000)
+    await page.evaluate(
+        "Array.from(document.querySelectorAll('.daterangepicker'))"
+        ".find(el => el.offsetParent !== null)?.querySelector('.cancelBtn')?.click()"
+    )
     await page.wait_for_timeout(300)
+    await page.evaluate(
+        "Array.from(document.querySelectorAll('.daterangepicker'))"
+        ".find(el => el.offsetParent !== null)?.querySelector('.applyBtn')?.click()"
+    )
+    await page.wait_for_timeout(500)
 
     _log(f"OC Step 4: Preenchendo N° Referencia '{referencia}'")
     await page.evaluate(f"""
