@@ -104,21 +104,18 @@ async def _selecionar_via_modal(page, div_class, termo, label):
     await page.keyboard.press("Enter")
     await page.wait_for_timeout(2500)
 
-    # Verifica se retornou resultados
-    sem_resultado = page.locator("table tbody tr td:has-text('Nenhum resultado'), table tbody:not(:has(tr))")
-    try:
-        if await sem_resultado.first.is_visible(timeout=1000):
-            raise Exception(f"{label} '{termo}' nao encontrado(a) no sistema.")
-    except Exception as e:
-        if "nao encontrado" in str(e):
-            raise
-        pass
+    sem_resultado = page.locator("table tbody tr td:has-text('Nenhum resultado')")
+    if await sem_resultado.is_visible(timeout=1500):
+        raise Exception(f"{label} '{termo}' nao encontrado(a) no sistema ESL.")
 
-    await page.click(
-        "table tbody tr:first-child button:has-text('Selecionar'), "
-        "table tbody tr:first-child a:has-text('Selecionar')",
-        timeout=10000
-    )
+    try:
+        await page.click(
+            "table tbody tr:first-child button:has-text('Selecionar'), "
+            "table tbody tr:first-child a:has-text('Selecionar')",
+            timeout=10000
+        )
+    except Exception:
+        raise Exception(f"{label} '{termo}' nao encontrado(a) no sistema ESL.")
     await page.wait_for_timeout(1500)
     _log(f"{label} '{termo}' selecionado(a).")
 
