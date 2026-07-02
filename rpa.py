@@ -10,7 +10,6 @@ def _log(msg: str):
 
 
 def _normalizar_frete(valor: str) -> tuple:
-    """Retorna (inteiro, centavos). Ex: 'R$ 2.421,60' -> ('2421', '60')"""
     v = re.sub(r'[^\d.,]', '', valor)
     if "," in v:
         inteiro, centavos = v.split(",", 1)
@@ -24,43 +23,60 @@ def _normalizar_frete(valor: str) -> tuple:
     return inteiro, centavos
 
 
+def _filtrar_itens(lista: list) -> list:
+    return [
+        item for item in (lista or [])
+        if item and item.strip() not in ("", "-", "null", "N/A", "n/a", "0")
+    ]
+
+
 async def emitir_manifesto(config: dict, headless: bool = True) -> str:
-    _log(f"[RPA] Iniciando | motorista={config['motorista']} | veiculo={config['placa_veiculo']} | frete={config['valor_frete']}")
+    tipo_nota = config.get("tipo_nota", "nf")
+    tipo_motorista = config.get("tipo_motorista", "Dedicado")
+    _log(
+        f"[RPA] Iniciando | motorista={config['motorista']} | veiculo={config['placa_veiculo']} "
+        f"| tipo_nota={tipo_nota} | tipo_motorista={tipo_motorista}"
+    )
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
         context = await browser.new_context()
         page = await context.new_page()
         try:
-            _log("[RPA] Etapa 1/8: Login")
+            _log("[RPA] Etapa 1: Login")
             await login(page, config)
-            _log("[RPA] Etapa 2/8: Novo manifesto")
+            _log("[RPA] Etapa 2: Novo manifesto")
             await novo_manifesto(page, config)
-            _log("[RPA] Etapa 3/8: Motorista")
+            _log("[RPA] Etapa 3: Motorista")
             await preencher_motorista(page, config["motorista"])
-            _log("[RPA] Etapa 4/8: Veiculo/Carreta")
+            _log("[RPA] Etapa 4: Veiculo/Carreta")
             await verificar_e_corrigir_veiculo(page, config["placa_veiculo"])
             if config.get("placa_carreta"):
                 await verificar_e_corrigir_carreta(page, config["placa_carreta"])
-            _log("[RPA] Etapa 5/8: Classificacao")
+            _log("[RPA] Etapa 5: Classificacao")
             await preencher_classificacao(page, config["classificacao"])
-            _log("[RPA] Etapa 6/8: 1o salvamento")
+            _log("[RPA] Etapa 6: 1o salvamento")
             await salvar_manifesto(page)
-            _log("[RPA] Etapa 7/8: Notas fiscais")
-            notas_validas = [
-                n for n in config["notas_fiscais"]
-                if n and n.strip() not in ("", "-", "null", "N/A", "n/a", "0")
-            ]
-            _log(f"Notas a inserir: {notas_validas}")
-            for nota in notas_validas:
-                await inserir_nota_fiscal(page, nota)
-            _log("[RPA] Etapa 8/8: Vale-Frete")
+
+            _log(f"[RPA] Etapa 7: Adicionar itens (tipo_nota={tipo_nota})")
+            if tipo_nota == "nf":
+                notas = _filtrar_itens(config.get("notas_fiscais", []))
+                _log(f"Notas a inserir: {notas}")
+                for nota in notas:
+                    await inserir_nota_fiscal(page, nota)
+            elif tipo_nota == "oc":
+                referencias = _filtrar_itens(config.get("referencias", []))
+                _log(f"Referencias OC a inserir: {referencias}")
+                for ref in referencias:
+                    await inserir_referencia_oc(page, ref)
+
+            _log(f"[RPA] Etapa 8: Vale-Frete (tipo_motorista={tipo_motorista})")
             await ir_para_aba_vale_frete(page)
             await preencher_frete(
                 page,
                 config["cidade_origem"],
                 config["cidade_destino"],
-                config["valor_frete"],
-                config["classificacao"],
+                config.get("valor_frete", ""),
+                tipo_motorista,
             )
             await salvar_manifesto(page)
             numero = await obter_numero_manifesto(page)
@@ -188,16 +204,14 @@ async def salvar_manifesto(page):
 
 
 async def inserir_nota_fiscal(page, nota):
-    # Clicar na aba Entregas garante que Vue renderiza e estabiliza o conteúdo
     aba = page.locator("a:has-text('Entregas'), li:has-text('Entregas') a")
     await aba.first.wait_for(state="visible", timeout=10000)
     await aba.first.click()
-    await page.wait_for_timeout(1500)  # aguarda Vue terminar o ciclo de re-render
+    await page.wait_for_timeout(1500)
 
     container = page.locator("#selected-tab-deliveries #select2-term-container")
     await container.wait_for(state="visible", timeout=10000)
-    await page.wait_for_timeout(500)  # margem extra para estabilidade pós-render
-    # Usar JS para scroll evita race condition com detachment do Vue
+    await page.wait_for_timeout(500)
     await page.evaluate(
         "document.querySelector('#selected-tab-deliveries #select2-term-container')?.scrollIntoView()"
     )
@@ -218,11 +232,90 @@ async def inserir_nota_fiscal(page, nota):
     except Exception:
         pass
     _log(f"Nota fiscal '{nota}' inserida.")
-    _log("Recarregando pagina para confirmar insercao da NF...")
     await page.reload()
     await page.wait_for_load_state("networkidle")
     await page.wait_for_timeout(3000)
     _log("Pagina recarregada.")
+
+
+async def inserir_referencia_oc(page, referencia):
+    _log(f"OC Step 1: Clicando em '+ Entregas' para referencia '{referencia}'")
+    await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
+    btn_entregas = page.locator("button:has(i.fa-plus):has-text('Entregas')")
+    await btn_entregas.wait_for(state="visible", timeout=15000)
+    await btn_entregas.click()
+
+    _log("OC Step 2: Aguardando modal e clicando em Data do Frete")
+    await page.wait_for_selector("#search-freights", state="visible", timeout=15000)
+    date_field = page.locator("input#search_freights_service_at")
+    await date_field.wait_for(state="visible", timeout=15000)
+    await date_field.click()
+    await page.wait_for_selector(".daterangepicker", state="visible", timeout=15000)
+
+    _log("OC Step 3: Limpando filtro de datas")
+    btn_limpar = page.locator(".daterangepicker button.cancelBtn, .daterangepicker .cancelBtn")
+    await btn_limpar.wait_for(state="visible", timeout=15000)
+    await btn_limpar.click()
+    btn_confirmar = page.locator(".daterangepicker button.applyBtn, .daterangepicker .applyBtn")
+    await btn_confirmar.wait_for(state="visible", timeout=15000)
+    await btn_confirmar.click()
+    await page.wait_for_selector(".daterangepicker", state="hidden", timeout=15000)
+
+    _log(f"OC Step 4: Preenchendo N° Referencia '{referencia}'")
+    ref_field = page.locator("input#search_freights_reference_number")
+    await ref_field.wait_for(state="visible", timeout=15000)
+    await ref_field.clear()
+    await ref_field.fill(referencia)
+
+    _log("OC Step 5: Clicando na lupa")
+    search_btn = page.locator("#search-freights button#submit[type='submit']")
+    await search_btn.wait_for(state="visible", timeout=15000)
+    await search_btn.click()
+    await page.wait_for_selector("#search-freights tbody tr", state="visible", timeout=15000)
+
+    nao_encontrado = await page.locator("#search-freights").get_by_text("Fretes não localizados").is_visible()
+    if nao_encontrado:
+        raise Exception(f"Referencia OC '{referencia}' nao encontrada no sistema ESL.")
+
+    _log("OC Step 6: Selecionando todos")
+    checkbox = page.locator("#search-freights input[type='checkbox'].toggle.uniform")
+    await checkbox.wait_for(state="visible", timeout=15000)
+    await page.wait_for_function(
+        "() => { const cb = document.querySelector('#search-freights input[type=\"checkbox\"].toggle.uniform'); return cb && !cb.disabled; }",
+        timeout=15000
+    )
+    await checkbox.click()
+
+    _log("OC Step 7: Clicando em '+ Adicionar'")
+    try:
+        btn_adicionar = page.locator("#search-freights a.btn:has(i.fa-plus):has-text('Adicionar')")
+        await btn_adicionar.wait_for(state="visible", timeout=15000)
+        await btn_adicionar.click()
+    except Exception:
+        btn_adicionar_alt = page.locator("#search-freights a.btn:not([data-dismiss])").first
+        await btn_adicionar_alt.wait_for(state="visible", timeout=15000)
+        await btn_adicionar_alt.click()
+
+    _log("OC Step 8: Confirmando SweetAlert2")
+    await page.wait_for_selector("button.swal2-confirm", state="visible", timeout=15000)
+    await page.locator("button.swal2-confirm").click()
+
+    _log("OC Step 9: Aguardando confirmacao")
+    await page.wait_for_selector(".swal2-popup", state="visible", timeout=15000)
+    await page.wait_for_selector(".swal2-popup", state="hidden", timeout=30000)
+
+    _log("OC Step 10: Fechando modal")
+    try:
+        btn_close = page.locator("#search-freights button.close[data-dismiss='modal']")
+        await btn_close.wait_for(state="visible", timeout=15000)
+        await btn_close.click()
+        await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
+    except Exception:
+        btn_close_alt = page.locator("a[name='close_modal_button'][data-dismiss='modal']")
+        await btn_close_alt.click()
+        await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
+
+    _log(f"Referencia OC '{referencia}' inserida.")
 
 
 async def ir_para_aba_vale_frete(page):
@@ -234,11 +327,7 @@ async def ir_para_aba_vale_frete(page):
     _log("Aba Vale-Frete aberta.")
 
 
-# Classificações que calculam o frete automaticamente pela tabela de preços
-CLASSIFICACOES_CALCULO_AUTOMATICO = {"ARCOR"}
-
-
-async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, classificacao=""):
+async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo_motorista="Dedicado"):
     _log(f"Preenchendo cidade origem: {cidade_origem}")
     await page.click("#select2-calculation_origin_city-container")
     await page.wait_for_timeout(800)
@@ -263,12 +352,19 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, clas
     await page.wait_for_timeout(800)
     _log(f"Cidade destino: {cidade_destino}")
 
-    if classificacao.upper() in CLASSIFICACOES_CALCULO_AUTOMATICO:
-        _log(f"Classificacao '{classificacao}' calcula frete automaticamente. Aguardando 5s...")
+    if tipo_motorista.capitalize() == "Tabela":
+        _log("Tipo Tabela: clicando em Calcular e aguardando calculo automatico...")
+        try:
+            btn_calcular = page.locator("button:has-text('Calcular'), input[value='Calcular']")
+            await btn_calcular.wait_for(state="visible", timeout=5000)
+            await btn_calcular.click()
+            _log("Botao Calcular clicado.")
+        except Exception:
+            _log("Botao Calcular nao encontrado, aguardando calculo automatico...")
         await page.wait_for_timeout(5000)
         _log("Calculo automatico concluido.")
     else:
-        _log(f"Preenchendo valor do frete: {valor_frete}")
+        _log(f"Tipo {tipo_motorista}: preenchendo valor do frete manual: {valor_frete}")
         inteiro, centavos = _normalizar_frete(valor_frete)
         campo = page.locator("#closed_freight_subtotal")
         await campo.wait_for(state="attached", timeout=10000)
@@ -283,8 +379,8 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, clas
             await page.wait_for_timeout(400)
             await page.keyboard.type(centavos, delay=100)
             await page.wait_for_timeout(300)
-    await page.keyboard.press("Tab")
-    await page.wait_for_timeout(800)
+        await page.keyboard.press("Tab")
+        await page.wait_for_timeout(800)
 
 
 async def obter_numero_manifesto(page):
