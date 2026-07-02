@@ -239,7 +239,12 @@ async def inserir_nota_fiscal(page, nota):
 
 
 async def inserir_referencia_oc(page, referencia):
-    _log(f"OC Step 1: Clicando em '+ Entregas' para referencia '{referencia}'")
+    _log(f"OC Step 1: Abrindo aba Entregas e clicando em '+ Entregas' para referencia '{referencia}'")
+    aba = page.locator("a:has-text('Entregas'), li:has-text('Entregas') a")
+    await aba.first.wait_for(state="visible", timeout=10000)
+    await aba.first.click()
+    await page.wait_for_timeout(1500)
+
     await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
     btn_entregas = page.locator("button:has(i.fa-plus):has-text('Entregas')")
     await btn_entregas.wait_for(state="visible", timeout=15000)
