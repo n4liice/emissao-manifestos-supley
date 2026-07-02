@@ -258,41 +258,49 @@ async def inserir_referencia_oc(page, referencia):
         await page.evaluate("$('#search-freights').modal('show')")
         await page.wait_for_timeout(1000)
 
-    _log("OC Step 2: Aguardando modal e ativando aba Fretes")
+    _log("OC Step 2: Aguardando modal e ativando aba Fretes via JS")
     await page.wait_for_selector("#search-freights", state="visible", timeout=15000)
     await page.wait_for_timeout(500)
-    # garante que a aba correta (Fretes) esta ativa dentro do modal
-    try:
-        aba_fretes = page.locator("#search-freights a[href='#tab-freights'], #search-freights a[data-target='#tab-freights']")
-        if await aba_fretes.first.is_visible(timeout=2000):
-            await aba_fretes.first.click()
-            await page.wait_for_timeout(500)
-    except Exception:
-        pass
-
-    date_field = page.locator("#tab-freights input#search_freights_service_at").first
-    await date_field.wait_for(state="visible", timeout=15000)
-    await date_field.click()
-    await page.wait_for_selector(".daterangepicker", state="visible", timeout=15000)
-
-    _log("OC Step 3: Limpando filtro de datas")
-    await page.wait_for_selector(".daterangepicker .cancelBtn", state="visible", timeout=15000)
-    await page.evaluate(
-        "Array.from(document.querySelectorAll('.daterangepicker'))"
-        ".find(el => el.offsetParent !== null)?.querySelector('.cancelBtn')?.click()"
-    )
+    await page.evaluate("""
+        () => {
+            // Ativa o painel #tab-freights dentro do modal
+            document.querySelectorAll('#search-freights .tab-pane').forEach(p => {
+                p.classList.remove('active', 'in');
+            });
+            const pane = document.querySelector('#tab-freights');
+            if (pane) { pane.classList.add('active', 'in'); }
+            // Ativa o link da aba correspondente
+            document.querySelectorAll('#search-freights .nav-tabs li').forEach(li => li.classList.remove('active'));
+            const link = document.querySelector('#search-freights a[href=\"#tab-freights\"]');
+            if (link) { link.closest('li')?.classList.add('active'); }
+        }
+    """)
     await page.wait_for_timeout(500)
-    await page.evaluate(
-        "Array.from(document.querySelectorAll('.daterangepicker'))"
-        ".find(el => el.offsetParent !== null)?.querySelector('.applyBtn')?.click()"
-    )
-    await page.wait_for_timeout(800)
+
+    _log("OC Step 3: Limpando filtro de datas via JS")
+    await page.evaluate("""
+        () => {
+            const field = document.querySelector('#tab-freights input#search_freights_service_at');
+            if (field) {
+                field.value = '';
+                field.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+    """)
+    await page.wait_for_timeout(300)
 
     _log(f"OC Step 4: Preenchendo N° Referencia '{referencia}'")
-    await page.evaluate(
-        f"document.querySelector('#search-freights input#search_freights_reference_number').value = '{referencia}'"
-    )
-    await page.wait_for_timeout(500)
+    await page.evaluate(f"""
+        () => {{
+            const field = document.querySelector('#tab-freights input#search_freights_reference_number');
+            if (field) {{
+                field.value = '{referencia}';
+                field.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                field.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            }}
+        }}
+    """)
+    await page.wait_for_timeout(300)
 
     _log("OC Step 5: Clicando na lupa")
     search_btn = page.locator("#tab-freights button#submit[type='submit']")
