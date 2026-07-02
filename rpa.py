@@ -289,9 +289,16 @@ async def inserir_referencia_oc(page, referencia):
     """)
     await page.wait_for_timeout(300)
 
+    def _js_click(selector):
+        return f"""
+            () => {{
+                const el = document.querySelector('{selector}');
+                if (el) el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
+            }}
+        """
+
     _log("OC Step 5: Clicando na lupa")
-    search_btn = page.locator("#tab-freights button#submit[type='submit']").first
-    await search_btn.click(force=True)
+    await page.evaluate(_js_click('#tab-freights button#submit[type="submit"]'))
     await page.wait_for_timeout(2000)
     await page.wait_for_function(
         "() => document.querySelectorAll('#tab-freights tbody tr').length > 0",
@@ -307,12 +314,17 @@ async def inserir_referencia_oc(page, referencia):
         "() => { const cb = document.querySelector('#tab-freights input[type=\"checkbox\"].toggle.uniform'); return cb && !cb.disabled; }",
         timeout=15000
     )
-    await page.locator("#tab-freights input[type='checkbox'].toggle.uniform").first.click(force=True)
+    await page.evaluate(_js_click('#tab-freights input[type="checkbox"].toggle.uniform'))
     await page.wait_for_timeout(500)
 
     _log("OC Step 7: Clicando em '+ Adicionar'")
-    btn_adicionar = page.locator("#search-freights a.btn:has(i.fa-plus)").filter(has_text="Adicionar").first
-    await btn_adicionar.click(force=True)
+    await page.evaluate("""
+        () => {
+            const btn = Array.from(document.querySelectorAll('#search-freights a.btn'))
+                .find(el => el.querySelector('i.fa-plus') && el.textContent.includes('Adicionar'));
+            if (btn) btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+        }
+    """)
     await page.wait_for_timeout(500)
 
     _log("OC Step 8: Confirmando SweetAlert2")
