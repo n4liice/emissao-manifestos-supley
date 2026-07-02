@@ -246,7 +246,7 @@ async def inserir_referencia_oc(page, referencia):
     await page.wait_for_timeout(2000)
 
     await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
-    btn_entregas = page.locator('[data-target="#search-freights"]')
+    btn_entregas = page.locator("button:has(i.fa-plus):has-text('Entregas')").first
     await btn_entregas.wait_for(state="visible", timeout=15000)
     await btn_entregas.scroll_into_view_if_needed()
     await btn_entregas.click()
@@ -258,9 +258,19 @@ async def inserir_referencia_oc(page, referencia):
         await page.evaluate("$('#search-freights').modal('show')")
         await page.wait_for_timeout(1000)
 
-    _log("OC Step 2: Aguardando modal e clicando em Data do Frete")
+    _log("OC Step 2: Aguardando modal e ativando aba Fretes")
     await page.wait_for_selector("#search-freights", state="visible", timeout=15000)
-    date_field = page.locator("#search-freights input#search_freights_service_at")
+    await page.wait_for_timeout(500)
+    # garante que a aba correta (Fretes) esta ativa dentro do modal
+    try:
+        aba_fretes = page.locator("#search-freights a[href='#tab-freights'], #search-freights a[data-target='#tab-freights']")
+        if await aba_fretes.first.is_visible(timeout=2000):
+            await aba_fretes.first.click()
+            await page.wait_for_timeout(500)
+    except Exception:
+        pass
+
+    date_field = page.locator("#tab-freights input#search_freights_service_at").first
     await date_field.wait_for(state="visible", timeout=15000)
     await date_field.click()
     await page.wait_for_selector(".daterangepicker", state="visible", timeout=15000)
@@ -285,17 +295,17 @@ async def inserir_referencia_oc(page, referencia):
     await page.wait_for_timeout(500)
 
     _log("OC Step 5: Clicando na lupa")
-    search_btn = page.locator("#search-freights button#submit[type='submit']")
+    search_btn = page.locator("#tab-freights button#submit[type='submit']")
     await search_btn.wait_for(state="visible", timeout=15000)
     await search_btn.click()
-    await page.wait_for_selector("#search-freights tbody tr", state="visible", timeout=15000)
+    await page.wait_for_selector("#tab-freights tbody tr", state="visible", timeout=15000)
 
-    nao_encontrado = await page.locator("#search-freights").get_by_text("Fretes não localizados").is_visible()
+    nao_encontrado = await page.locator("#tab-freights").get_by_text("Fretes não localizados").is_visible()
     if nao_encontrado:
         raise Exception(f"Referencia OC '{referencia}' nao encontrada no sistema ESL.")
 
     _log("OC Step 6: Selecionando todos")
-    checkbox = page.locator("#search-freights input[type='checkbox'].toggle.uniform")
+    checkbox = page.locator("#tab-freights input[type='checkbox'].toggle.uniform")
     await checkbox.wait_for(state="visible", timeout=15000)
     await page.wait_for_function(
         "() => { const cb = document.querySelector('#search-freights input[type=\"checkbox\"].toggle.uniform'); return cb && !cb.disabled; }",
