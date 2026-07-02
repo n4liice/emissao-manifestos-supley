@@ -267,13 +267,13 @@ async def inserir_referencia_oc(page, referencia):
     await page.wait_for_selector(".daterangepicker", state="visible", timeout=15000)
 
     _log("OC Step 3: Limpando filtro de datas")
-    btn_limpar = page.locator(".daterangepicker button.cancelBtn, .daterangepicker .cancelBtn")
+    btn_limpar = page.locator(".daterangepicker.ltr.show-ranges button.cancelBtn").first
     await btn_limpar.wait_for(state="visible", timeout=15000)
     await btn_limpar.click()
-    btn_confirmar = page.locator(".daterangepicker button.applyBtn, .daterangepicker .applyBtn")
+    btn_confirmar = page.locator(".daterangepicker.ltr.show-ranges button.applyBtn").first
     await btn_confirmar.wait_for(state="visible", timeout=15000)
     await btn_confirmar.click()
-    await page.wait_for_selector(".daterangepicker", state="hidden", timeout=15000)
+    await page.locator(".daterangepicker.ltr.show-ranges").first.wait_for(state="hidden", timeout=15000)
 
     _log(f"OC Step 4: Preenchendo N° Referencia '{referencia}'")
     ref_field = page.locator("#search-freights input#search_freights_reference_number")
