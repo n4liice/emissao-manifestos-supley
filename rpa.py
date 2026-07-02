@@ -243,12 +243,21 @@ async def inserir_referencia_oc(page, referencia):
     aba = page.locator("a:has-text('Entregas'), li:has-text('Entregas') a")
     await aba.first.wait_for(state="visible", timeout=10000)
     await aba.first.click()
-    await page.wait_for_timeout(1500)
+    await page.wait_for_timeout(2000)
 
     await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
     btn_entregas = page.locator("button:has(i.fa-plus):has-text('Entregas')")
     await btn_entregas.wait_for(state="visible", timeout=15000)
+    await btn_entregas.scroll_into_view_if_needed()
     await btn_entregas.click()
+    await page.wait_for_timeout(1000)
+
+    # fallback: abre o modal via jQuery se o clique nao disparou
+    modal_visivel = await page.locator("#search-freights").is_visible()
+    if not modal_visivel:
+        _log("OC Step 1: modal nao abriu via click, abrindo via jQuery...")
+        await page.evaluate("$('#search-freights').modal('show')")
+        await page.wait_for_timeout(1000)
 
     _log("OC Step 2: Aguardando modal e clicando em Data do Frete")
     await page.wait_for_selector("#search-freights", state="visible", timeout=15000)
