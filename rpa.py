@@ -308,15 +308,14 @@ async def inserir_referencia_oc(page, referencia):
     )
     await page.evaluate("document.querySelector('#tab-freights input[type=\"checkbox\"].toggle.uniform')?.click()")
 
-    _log("OC Step 7: Clicando em '+ Adicionar'")
-    try:
-        btn_adicionar = page.locator("#search-freights a.btn:has(i.fa-plus):has-text('Adicionar')")
-        await btn_adicionar.wait_for(state="visible", timeout=15000)
-        await btn_adicionar.click()
-    except Exception:
-        btn_adicionar_alt = page.locator("#search-freights a.btn:not([data-dismiss])").first
-        await btn_adicionar_alt.wait_for(state="visible", timeout=15000)
-        await btn_adicionar_alt.click()
+    _log("OC Step 7: Clicando em '+ Adicionar' via JS")
+    await page.evaluate("""
+        () => {
+            const btn = Array.from(document.querySelectorAll('#search-freights a.btn'))
+                .find(el => el.querySelector('i.fa-plus') && el.textContent.includes('Adicionar'));
+            if (btn) btn.click();
+        }
+    """)
 
     _log("OC Step 8: Confirmando SweetAlert2")
     await page.wait_for_selector("button.swal2-confirm", state="visible", timeout=15000)
