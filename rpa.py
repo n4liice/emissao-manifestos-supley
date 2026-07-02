@@ -289,8 +289,9 @@ async def inserir_referencia_oc(page, referencia):
     """)
     await page.wait_for_timeout(300)
 
-    _log("OC Step 5: Clicando na lupa via JS")
-    await page.evaluate("document.querySelector('#tab-freights button#submit[type=\"submit\"]')?.click()")
+    _log("OC Step 5: Clicando na lupa")
+    search_btn = page.locator("#tab-freights button#submit[type='submit']").first
+    await search_btn.click(force=True)
     await page.wait_for_timeout(2000)
     await page.wait_for_function(
         "() => document.querySelectorAll('#tab-freights tbody tr').length > 0",
@@ -301,25 +302,22 @@ async def inserir_referencia_oc(page, referencia):
     if nao_encontrado:
         raise Exception(f"Referencia OC '{referencia}' nao encontrada no sistema ESL.")
 
-    _log("OC Step 6: Selecionando todos via JS")
+    _log("OC Step 6: Selecionando todos")
     await page.wait_for_function(
         "() => { const cb = document.querySelector('#tab-freights input[type=\"checkbox\"].toggle.uniform'); return cb && !cb.disabled; }",
         timeout=15000
     )
-    await page.evaluate("document.querySelector('#tab-freights input[type=\"checkbox\"].toggle.uniform')?.click()")
+    await page.locator("#tab-freights input[type='checkbox'].toggle.uniform").first.click(force=True)
+    await page.wait_for_timeout(500)
 
-    _log("OC Step 7: Clicando em '+ Adicionar' via JS")
-    await page.evaluate("""
-        () => {
-            const btn = Array.from(document.querySelectorAll('#search-freights a.btn'))
-                .find(el => el.querySelector('i.fa-plus') && el.textContent.includes('Adicionar'));
-            if (btn) btn.click();
-        }
-    """)
+    _log("OC Step 7: Clicando em '+ Adicionar'")
+    btn_adicionar = page.locator("#search-freights a.btn:has(i.fa-plus)").filter(has_text="Adicionar").first
+    await btn_adicionar.click(force=True)
+    await page.wait_for_timeout(500)
 
     _log("OC Step 8: Confirmando SweetAlert2")
-    await page.wait_for_selector("button.swal2-confirm", state="visible", timeout=15000)
-    await page.locator("button.swal2-confirm").click()
+    await page.wait_for_selector("#swal-confirm, button.swal2-confirm", state="visible", timeout=15000)
+    await page.locator("#swal-confirm, button.swal2-confirm").first.click()
 
     _log("OC Step 9: Aguardando confirmacao")
     await page.wait_for_selector(".swal2-popup", state="visible", timeout=15000)
