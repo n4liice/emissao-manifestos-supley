@@ -247,7 +247,7 @@ async def inserir_referencia_oc(page, referencia):
 
     _log("OC Step 2: Aguardando modal e clicando em Data do Frete")
     await page.wait_for_selector("#search-freights", state="visible", timeout=15000)
-    date_field = page.locator("input#search_freights_service_at")
+    date_field = page.locator("#search-freights input#search_freights_service_at")
     await date_field.wait_for(state="visible", timeout=15000)
     await date_field.click()
     await page.wait_for_selector(".daterangepicker", state="visible", timeout=15000)
@@ -262,7 +262,7 @@ async def inserir_referencia_oc(page, referencia):
     await page.wait_for_selector(".daterangepicker", state="hidden", timeout=15000)
 
     _log(f"OC Step 4: Preenchendo N° Referencia '{referencia}'")
-    ref_field = page.locator("input#search_freights_reference_number")
+    ref_field = page.locator("#search-freights input#search_freights_reference_number")
     await ref_field.wait_for(state="visible", timeout=15000)
     await ref_field.clear()
     await ref_field.fill(referencia)
