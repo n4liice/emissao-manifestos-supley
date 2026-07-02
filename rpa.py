@@ -238,8 +238,34 @@ async def inserir_nota_fiscal(page, nota):
     _log("Pagina recarregada.")
 
 
+def _pos_visivel(seletor_js):
+    """Retorna JS que acha o primeiro elemento visivel (bbox > 0) e retorna suas coordenadas centrais."""
+    return f"""
+        () => {{
+            const els = Array.from(document.querySelectorAll({seletor_js!r}));
+            for (const el of els) {{
+                const r = el.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) return {{x: r.left + r.width / 2, y: r.top + r.height / 2}};
+            }}
+            return null;
+        }}
+    """
+
+
+async def _mouse_click_visivel(page, seletor_js, label):
+    pos = await page.evaluate(_pos_visivel(seletor_js))
+    _log(f"{label}: pos = {pos}")
+    if pos:
+        await page.mouse.click(pos['x'], pos['y'])
+    else:
+        _log(f"{label}: AVISO - elemento nao visivel")
+    return pos
+
+
 async def inserir_referencia_oc(page, referencia):
-    _log(f"OC Step 1: Abrindo aba Entregas e clicando em '+ Entregas' para referencia '{referencia}'")
+    _log(f"OC: Iniciando insercao de referencia '{referencia}'")
+
+    # Step 1: Aba Entregas + botao + Entregas
     aba = page.locator("a:has-text('Entregas'), li:has-text('Entregas') a")
     await aba.first.wait_for(state="visible", timeout=10000)
     await aba.first.click()
@@ -254,100 +280,89 @@ async def inserir_referencia_oc(page, referencia):
 
     modal_visivel = await page.locator("#search-freights").is_visible()
     if not modal_visivel:
-        _log("OC Step 1: modal nao abriu via click, abrindo via jQuery...")
+        _log("OC: modal nao abriu via click, abrindo via jQuery...")
         await page.evaluate("$('#search-freights').modal('show')")
         await page.wait_for_timeout(1000)
 
-    _log("OC Step 2: Aguardando modal e ativando aba Fretes via Bootstrap tab()")
     await page.wait_for_selector("#search-freights", state="visible", timeout=15000)
     await page.wait_for_timeout(500)
+
+    # Step 2: Ativar aba Fretes
     await page.evaluate("$('#search-freights a[href=\"#tab-freights\"]').tab('show')")
     await page.wait_for_timeout(800)
 
-    _log("OC Step 3: Limpando filtro de datas")
-    date_field = page.locator("#tab-freights input#search_freights_service_at").first
-    await date_field.click()
-    await page.wait_for_selector(".daterangepicker", state="visible", timeout=10000)
-    await page.evaluate(
-        "Array.from(document.querySelectorAll('.daterangepicker'))"
-        ".find(el => el.offsetParent !== null)?.querySelector('.cancelBtn')?.click()"
-    )
-    await page.wait_for_timeout(300)
-    await page.evaluate(
-        "Array.from(document.querySelectorAll('.daterangepicker'))"
-        ".find(el => el.offsetParent !== null)?.querySelector('.applyBtn')?.click()"
-    )
+    # Step 3: Clicar no campo Data do Frete (visivel na tela) para abrir datepicker
+    _log("OC Step 3: Clicando campo Data do Frete")
+    await _mouse_click_visivel(page, 'input[id*="service_at"]', "campo data")
     await page.wait_for_timeout(500)
 
-    _log(f"OC Step 4: Preenchendo N° Referencia '{referencia}'")
-    await page.evaluate(f"""
-        () => {{
-            const field = document.querySelector('#tab-freights input#search_freights_reference_number');
-            if (field) {{
-                field.value = '{referencia}';
-                field.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                field.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            }}
-        }}
-    """)
+    # Clicar Limpar no datepicker visivel
+    await _mouse_click_visivel(page, '.daterangepicker .cancelBtn', "Limpar")
     await page.wait_for_timeout(300)
 
-    def _js_click(selector):
-        return f"""
-            () => {{
-                const el = document.querySelector('{selector}');
-                if (el) el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
-            }}
-        """
+    # Confirmar — apos Limpar o picker pode ja ter fechado, tentamos mesmo assim
+    await _mouse_click_visivel(page, '.daterangepicker .applyBtn', "Confirmar")
+    await page.wait_for_timeout(300)
 
+    # Step 3b: Expandir filtros (seta para baixo) — elemento visivel no modal
+    _log("OC Step 3b: Expandindo filtros")
+    await _mouse_click_visivel(page, '#search-freights .fa-angle-down', "seta filtros")
+    await page.wait_for_timeout(500)
+
+    # Step 4: Clicar no campo Referencia visivel e digitar como humano
+    _log(f"OC Step 4: Preenchendo N° Referencia '{referencia}'")
+    pos_ref = await _mouse_click_visivel(page, 'input[id*="reference_number"]', "campo referencia")
+    if pos_ref:
+        await page.keyboard.press("Control+a")
+        await page.keyboard.type(referencia, delay=50)
+        _log(f"OC Step 4: digitou '{referencia}'")
+    await page.wait_for_timeout(300)
+
+    # Step 5: Clicar na lupa (submit visivel)
     _log("OC Step 5: Clicando na lupa")
-    await page.evaluate(_js_click('#tab-freights button#submit[type="submit"]'))
+    await _mouse_click_visivel(page, '#search-freights button[type="submit"]', "lupa")
     await page.wait_for_timeout(2000)
     await page.wait_for_function(
-        "() => document.querySelectorAll('#tab-freights tbody tr').length > 0",
+        "() => document.querySelectorAll('#search-freights tbody tr').length > 0",
         timeout=15000
     )
 
-    nao_encontrado = await page.locator("#tab-freights").get_by_text("Fretes não localizados").is_visible()
+    nao_encontrado = await page.locator("#search-freights .alert-info").is_visible()
     if nao_encontrado:
         raise Exception(f"Referencia OC '{referencia}' nao encontrada no sistema ESL.")
 
+    # Step 6: Selecionar todos — clicar no checkbox visivel (span.checker do uniform.js)
     _log("OC Step 6: Selecionando todos")
     await page.wait_for_function(
-        "() => { const cb = document.querySelector('#tab-freights input[type=\"checkbox\"].toggle.uniform'); return cb && !cb.disabled; }",
+        "() => Array.from(document.querySelectorAll('#search-freights input[type=\"checkbox\"]')).some(cb => cb.offsetParent !== null && !cb.disabled)",
         timeout=15000
     )
-    await page.evaluate(_js_click('#tab-freights input[type="checkbox"].toggle.uniform'))
+    await _mouse_click_visivel(page, '#search-freights span.checker, #search-freights input[type="checkbox"]', "checkbox")
     await page.wait_for_timeout(500)
 
+    # Step 7: Clicar em + Adicionar visivel
     _log("OC Step 7: Clicando em '+ Adicionar'")
-    await page.evaluate("""
-        () => {
-            const btn = Array.from(document.querySelectorAll('#search-freights a.btn'))
-                .find(el => el.querySelector('i.fa-plus') && el.textContent.includes('Adicionar'));
-            if (btn) btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
-        }
-    """)
-    await page.wait_for_timeout(500)
+    await _mouse_click_visivel(page, '#search-freights a.btn i.fa-plus', "+ Adicionar")
+    await page.wait_for_timeout(2000)
 
-    _log("OC Step 8: Confirmando SweetAlert2")
-    await page.wait_for_selector("#swal-confirm, button.swal2-confirm", state="visible", timeout=15000)
-    await page.locator("#swal-confirm, button.swal2-confirm").first.click()
-
-    _log("OC Step 9: Aguardando confirmacao")
+    # Step 8: SweetAlert2
+    _log("OC Step 8: Aguardando SweetAlert2")
     await page.wait_for_selector(".swal2-popup", state="visible", timeout=15000)
+    await _mouse_click_visivel(page, 'button.swal2-confirm', "SweetAlert Confirmar")
+
+    # Step 9: Aguardar fechamento
+    _log("OC Step 9: Aguardando confirmacao")
     await page.wait_for_selector(".swal2-popup", state="hidden", timeout=30000)
 
+    # Step 10: Fechar modal
     _log("OC Step 10: Fechando modal")
     try:
-        btn_close = page.locator("#search-freights button.close[data-dismiss='modal']")
-        await btn_close.wait_for(state="visible", timeout=15000)
+        btn_close = page.locator("#search-freights button.close")
+        await btn_close.wait_for(state="visible", timeout=5000)
         await btn_close.click()
-        await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
     except Exception:
-        btn_close_alt = page.locator("a[name='close_modal_button'][data-dismiss='modal']")
-        await btn_close_alt.click()
-        await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
+        await page.evaluate("$('#search-freights').modal('hide')")
+    await page.wait_for_selector("#search-freights", state="hidden", timeout=15000)
 
     _log(f"Referencia OC '{referencia}' inserida.")
 
