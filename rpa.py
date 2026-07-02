@@ -258,24 +258,11 @@ async def inserir_referencia_oc(page, referencia):
         await page.evaluate("$('#search-freights').modal('show')")
         await page.wait_for_timeout(1000)
 
-    _log("OC Step 2: Aguardando modal e ativando aba Fretes via JS")
+    _log("OC Step 2: Aguardando modal e ativando aba Fretes via Bootstrap tab()")
     await page.wait_for_selector("#search-freights", state="visible", timeout=15000)
     await page.wait_for_timeout(500)
-    await page.evaluate("""
-        () => {
-            // Ativa o painel #tab-freights dentro do modal
-            document.querySelectorAll('#search-freights .tab-pane').forEach(p => {
-                p.classList.remove('active', 'in');
-            });
-            const pane = document.querySelector('#tab-freights');
-            if (pane) { pane.classList.add('active', 'in'); }
-            // Ativa o link da aba correspondente
-            document.querySelectorAll('#search-freights .nav-tabs li').forEach(li => li.classList.remove('active'));
-            const link = document.querySelector('#search-freights a[href=\"#tab-freights\"]');
-            if (link) { link.closest('li')?.classList.add('active'); }
-        }
-    """)
-    await page.wait_for_timeout(500)
+    await page.evaluate("$('#search-freights a[href=\"#tab-freights\"]').tab('show')")
+    await page.wait_for_timeout(800)
 
     _log("OC Step 3: Limpando filtro de datas via JS")
     await page.evaluate("""
@@ -302,24 +289,24 @@ async def inserir_referencia_oc(page, referencia):
     """)
     await page.wait_for_timeout(300)
 
-    _log("OC Step 5: Clicando na lupa")
-    search_btn = page.locator("#tab-freights button#submit[type='submit']")
-    await search_btn.wait_for(state="visible", timeout=15000)
-    await search_btn.click()
-    await page.wait_for_selector("#tab-freights tbody tr", state="visible", timeout=15000)
+    _log("OC Step 5: Clicando na lupa via JS")
+    await page.evaluate("document.querySelector('#tab-freights button#submit[type=\"submit\"]')?.click()")
+    await page.wait_for_timeout(2000)
+    await page.wait_for_function(
+        "() => document.querySelectorAll('#tab-freights tbody tr').length > 0",
+        timeout=15000
+    )
 
     nao_encontrado = await page.locator("#tab-freights").get_by_text("Fretes não localizados").is_visible()
     if nao_encontrado:
         raise Exception(f"Referencia OC '{referencia}' nao encontrada no sistema ESL.")
 
-    _log("OC Step 6: Selecionando todos")
-    checkbox = page.locator("#tab-freights input[type='checkbox'].toggle.uniform")
-    await checkbox.wait_for(state="visible", timeout=15000)
+    _log("OC Step 6: Selecionando todos via JS")
     await page.wait_for_function(
-        "() => { const cb = document.querySelector('#search-freights input[type=\"checkbox\"].toggle.uniform'); return cb && !cb.disabled; }",
+        "() => { const cb = document.querySelector('#tab-freights input[type=\"checkbox\"].toggle.uniform'); return cb && !cb.disabled; }",
         timeout=15000
     )
-    await checkbox.click()
+    await page.evaluate("document.querySelector('#tab-freights input[type=\"checkbox\"].toggle.uniform')?.click()")
 
     _log("OC Step 7: Clicando em '+ Adicionar'")
     try:
