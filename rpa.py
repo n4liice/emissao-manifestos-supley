@@ -41,6 +41,7 @@ async def emitir_manifesto(config: dict, headless: bool = True) -> str:
         browser = await p.chromium.launch(headless=headless)
         context = await browser.new_context()
         page = await context.new_page()
+        numero = ""
         try:
             _log("[RPA] Etapa 1: Login")
             await login(page, config)
@@ -54,6 +55,8 @@ async def emitir_manifesto(config: dict, headless: bool = True) -> str:
                 await verificar_e_corrigir_carreta(page, config["placa_carreta"])
             _log("[RPA] Etapa 5: Classificacao")
             await preencher_classificacao(page, config["classificacao"])
+            _log("[RPA] Etapa 5b: Data do frete")
+            await preencher_data_frete(page, config.get("data_frete", ""))
             _log("[RPA] Etapa 6: 1o salvamento")
             await salvar_manifesto(page)
 
@@ -68,6 +71,9 @@ async def emitir_manifesto(config: dict, headless: bool = True) -> str:
                 _log(f"Referencias OC a inserir: {referencias}")
                 for ref in referencias:
                     await inserir_referencia_oc(page, ref)
+            elif tipo_nota == "sem_nota":
+                _log("[RPA] Etapa 7: Sem nota - preenchendo observacao")
+                await preencher_observacao(page, config.get("observacao", ""))
 
             _log(f"[RPA] Etapa 8: Vale-Frete (tipo_motorista={tipo_motorista})")
             await ir_para_aba_vale_frete(page)
@@ -77,11 +83,19 @@ async def emitir_manifesto(config: dict, headless: bool = True) -> str:
                 config["cidade_destino"],
                 config.get("valor_frete", ""),
                 tipo_motorista,
+                config.get("tabela_preco", ""),
             )
             await salvar_manifesto(page)
             numero = await obter_numero_manifesto(page)
             _log(f"[RPA] Concluido! Manifesto nr {numero}")
             return numero
+        except Exception as e:
+            try:
+                numero = await obter_numero_manifesto(page)
+            except Exception:
+                numero = ""
+            _log(f"[RPA] ERRO: {e} | Manifesto nr: '{numero}'")
+            raise RuntimeError(f"{e}||{numero}")
         finally:
             await browser.close()
 
@@ -166,6 +180,18 @@ async def verificar_e_corrigir_carreta(page, placa_esperada):
         await _selecionar_via_modal(page, "manifest_trailer_1", placa_esperada, "Carreta")
     else:
         _log("Carreta correta.")
+
+
+async def preencher_data_frete(page, data: str = ""):
+    from datetime import date
+    valor = data.strip() if data and data.strip() else date.today().strftime("%d/%m/%Y")
+    campo = page.locator("input#manifest_service_date")
+    await campo.wait_for(state="visible", timeout=10000)
+    await campo.click(click_count=3)
+    await page.keyboard.type(valor, delay=50)
+    await page.keyboard.press("Tab")
+    await page.wait_for_timeout(500)
+    _log(f"Data do frete preenchida: {valor}")
 
 
 async def preencher_classificacao(page, classificacao):
@@ -304,6 +330,19 @@ async def inserir_referencia_oc(page, referencia):
     await _mouse_click_visivel(page, '.daterangepicker .applyBtn', "Confirmar")
     await page.wait_for_timeout(300)
 
+    # Conferir valor do campo data apos limpeza
+    valor_data = await page.evaluate("""
+        () => {
+            const inputs = Array.from(document.querySelectorAll('input[id*="service_at"]'));
+            for (const el of inputs) {
+                const r = el.getBoundingClientRect();
+                if (r.width > 0) return el.value;
+            }
+            return null;
+        }
+    """)
+    _log(f"OC Step 3: valor data = '{valor_data}'")
+
     # Step 3b: Expandir filtros (seta para baixo) — elemento visivel no modal
     _log("OC Step 3b: Expandindo filtros")
     await _mouse_click_visivel(page, '#search-freights .fa-angle-down', "seta filtros")
@@ -376,7 +415,19 @@ async def ir_para_aba_vale_frete(page):
     _log("Aba Vale-Frete aberta.")
 
 
-async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo_motorista="Dedicado"):
+async def preencher_observacao(page, observacao: str):
+    campo = page.locator("#operational_comments")
+    await campo.wait_for(state="visible", timeout=10000)
+    await campo.click()
+    await page.keyboard.press("Control+a")
+    await page.keyboard.type(observacao, delay=30)
+    await page.wait_for_timeout(500)
+    _log(f"Observacao preenchida: {observacao}")
+
+
+async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo_motorista="Dedicado", tabela_preco=""):
+    tipo = tipo_motorista.strip().capitalize()
+
     _log(f"Preenchendo cidade origem: {cidade_origem}")
     await page.click("#select2-calculation_origin_city-container")
     await page.wait_for_timeout(800)
@@ -401,17 +452,49 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
     await page.wait_for_timeout(800)
     _log(f"Cidade destino: {cidade_destino}")
 
-    if tipo_motorista.capitalize() == "Tabela":
-        _log("Tipo Tabela: clicando em Calcular e aguardando calculo automatico...")
-        try:
-            btn_calcular = page.locator("button:has-text('Calcular'), input[value='Calcular']")
-            await btn_calcular.wait_for(state="visible", timeout=5000)
-            await btn_calcular.click()
-            _log("Botao Calcular clicado.")
-        except Exception:
-            _log("Botao Calcular nao encontrado, aguardando calculo automatico...")
+    if tipo == "Tabela":
+        _log(f"Tipo Tabela: selecionando radio price_table...")
+        # uniform.js — clicar no span.checker que envolve o radio #calculation_type
+        radio_pos = await page.evaluate("""
+            () => {
+                const el = document.querySelector('span.checker input#calculation_type[value="price_table"]');
+                if (el) {
+                    const span = el.closest('span.checker') || el.parentElement;
+                    const r = span.getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0) return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+                }
+                return null;
+            }
+        """)
+        if radio_pos:
+            await page.mouse.click(radio_pos['x'], radio_pos['y'])
+            _log("Radio 'price_table' clicado.")
+        else:
+            _log("AVISO: radio price_table nao encontrado, tentando locator direto...")
+            await page.locator("input#calculation_type[value='price_table']").click(force=True)
+        await page.wait_for_timeout(800)
+
+        if tabela_preco:
+            _log(f"Selecionando tabela de preco: {tabela_preco}")
+            await page.click("#select2-aggregate_price_table-container")
+            await page.wait_for_timeout(500)
+            await page.wait_for_selector(".select2-container--open input.select2-search__field", state="visible", timeout=5000)
+            await page.keyboard.type(tabela_preco, delay=80)
+            await page.wait_for_selector(".select2-results__option:not(.select2-results__option--loading)", state="visible", timeout=10000)
+            await page.click(f".select2-results__option:has-text('{tabela_preco}')")
+            await page.wait_for_timeout(800)
+            _log(f"Tabela de preco selecionada: {tabela_preco}")
+
+        _log("Clicando em Calcular...")
+        btn_calcular = page.locator("button:has-text('Calcular'), input[value='Calcular']")
+        await btn_calcular.wait_for(state="visible", timeout=5000)
+        await btn_calcular.click()
         await page.wait_for_timeout(5000)
-        _log("Calculo automatico concluido.")
+        _log("Calculo concluido.")
+
+    elif tipo == "Frota":
+        _log("Tipo Frota: sem valor de frete (CLT), apenas origem/destino ja preenchidos.")
+
     else:
         _log(f"Tipo {tipo_motorista}: preenchendo valor do frete manual: {valor_frete}")
         inteiro, centavos = _normalizar_frete(valor_frete)
@@ -441,7 +524,4 @@ async def obter_numero_manifesto(page):
                 return m.group(0)
     except Exception:
         pass
-    m = re.search(r'/manifests/(\d+)', page.url)
-    if m:
-        return m.group(1)
     return ""

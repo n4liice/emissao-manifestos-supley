@@ -5,24 +5,25 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 from playwright.async_api import async_playwright
 from rpa import login, novo_manifesto, preencher_motorista, verificar_e_corrigir_veiculo, \
-    verificar_e_corrigir_carreta, preencher_classificacao, salvar_manifesto, \
+    verificar_e_corrigir_carreta, preencher_classificacao, preencher_data_frete, salvar_manifesto, \
     inserir_referencia_oc, ir_para_aba_vale_frete, preencher_frete, obter_numero_manifesto
 
 CONFIG = {
     "url_base":       "https://mandalog.eslcloud.com.br",
     "email":          "automacao.ia@mandalog.com.br",
     "senha":          os.environ.get("ESL_SENHA", ""),
-    "motorista":      "ADRIANO JOSÉ DOS SANTOS",
-    "placa_veiculo":  "BSF1284",
+    "motorista":      "AFONSO LIBANIO DE SOUZA",
+    "placa_veiculo":  "EGJ0B09",
     "placa_carreta":  "ALH3D10",
-    "classificacao":  "ARCOR",
-    "tipo_motorista": "TABELA",
-    "tipo_nota":      "oc",
-    "notas_fiscais":  [],
-    "referencias":    ["52175357"],
-    "cidade_origem":  "BRAGANÇA",
-    "cidade_destino": "MANDALOG",
-    "valor_frete":    "",
+    "classificacao":  "SUPLEY",
+    "tipo_motorista": "DEDICADO",
+    "tipo_nota":      "nf",
+    "notas_fiscais":  ["141371"],
+    "referencias":    [],
+    "cidade_origem":  "MATÃO",
+    "cidade_destino": "JUNDIAI",
+    "valor_frete":    "R$0,00",
+    "data_frete": "03/07/2026"
 }
 
 
@@ -39,13 +40,14 @@ async def run():
             if CONFIG.get("placa_carreta"):
                 await verificar_e_corrigir_carreta(page, CONFIG["placa_carreta"])
             await preencher_classificacao(page, CONFIG["classificacao"])
+            await preencher_data_frete(page)
             await salvar_manifesto(page)
 
             for ref in CONFIG["referencias"]:
                 await inserir_referencia_oc(page, ref)
 
             await ir_para_aba_vale_frete(page)
-            await preencher_frete(page, CONFIG["cidade_origem"], CONFIG["cidade_destino"], CONFIG["valor_frete"], CONFIG["tipo_motorista"])
+            await preencher_frete(page, CONFIG["cidade_origem"], CONFIG["cidade_destino"], CONFIG["valor_frete"], CONFIG["tipo_motorista"], CONFIG.get("tabela_preco", ""))
             await salvar_manifesto(page)
             numero = await obter_numero_manifesto(page)
             print(f"\nConcluido! Manifesto nr {numero}")

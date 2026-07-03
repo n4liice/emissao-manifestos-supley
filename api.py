@@ -23,12 +23,15 @@ class ManifestoInput(BaseModel):
     placa_carreta: Optional[str] = None
     classificacao: str
     tipo_motorista: str                        # "Dedicado" | "Combinado" | "Tabela"
-    tipo_nota: str                             # "nf" | "oc"
+    tipo_nota: str                             # "nf" | "oc" | "sem_nota"
     notas_fiscais: Optional[List[str]] = None  # usado quando tipo_nota = "nf"
     referencias: Optional[List[str]] = None   # usado quando tipo_nota = "oc"
     cidade_origem: str
     cidade_destino: str
-    valor_frete: Optional[str] = None         # usado quando tipo_motorista != "Tabela"
+    valor_frete: Optional[str] = None         # usado quando tipo_motorista != "Tabela" e != "Frota"
+    data_frete: Optional[str] = None          # formato DD/MM/YYYY; se omitido usa hoje
+    tabela_preco: Optional[str] = None        # obrigatório quando tipo_motorista = "Tabela"
+    observacao: Optional[str] = None          # obrigatório quando tipo_nota = "sem_nota"
 
 
 @app.get("/health")
@@ -60,6 +63,9 @@ async def emitir(body: ManifestoInput, x_api_key: Optional[str] = Header(None)):
         "cidade_origem":   body.cidade_origem,
         "cidade_destino":  body.cidade_destino,
         "valor_frete":     body.valor_frete or "",
+        "data_frete":      body.data_frete or "",
+        "tabela_preco":    body.tabela_preco or "",
+        "observacao":      body.observacao or "",
     }
 
     print(
@@ -74,5 +80,9 @@ async def emitir(body: ManifestoInput, x_api_key: Optional[str] = Header(None)):
             numero = await emitir_manifesto(config, headless=True)
             return {"sucesso": True, "numero_manifesto": numero}
         except Exception as e:
-            print(f"[API] Erro: {e}", flush=True)
-            return {"sucesso": False, "erro": str(e)}
+            msg = str(e)
+            numero = ""
+            if "||" in msg:
+                msg, numero = msg.split("||", 1)
+            print(f"[API] Erro: {msg} | Manifesto nr: '{numero}'", flush=True)
+            return {"sucesso": False, "erro": msg, "numero_manifesto": numero}
