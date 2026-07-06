@@ -209,6 +209,18 @@ async def preencher_classificacao(page, classificacao):
     _log(f"Classificacao '{classificacao}' selecionada.")
 
 
+async def _verificar_erro_pagina(page):
+    try:
+        el = page.locator("#vue-error-component")
+        await el.wait_for(state="visible", timeout=3000)
+        texto = (await el.inner_text()).strip()
+        if texto:
+            raise Exception(f"Erro ESL: {texto}")
+    except Exception as e:
+        if "Erro ESL:" in str(e):
+            raise
+
+
 async def salvar_manifesto(page):
     try:
         if await page.locator(".swal2-container.swal2-shown").is_visible(timeout=1500):
@@ -226,6 +238,7 @@ async def salvar_manifesto(page):
     await page.click("button:has-text('Sim')")
     await page.wait_for_load_state("networkidle")
     await page.wait_for_timeout(2000)
+    await _verificar_erro_pagina(page)
     _log("Manifesto salvo.")
 
 
@@ -412,6 +425,7 @@ async def ir_para_aba_vale_frete(page):
     await aba.first.scroll_into_view_if_needed()
     await aba.first.click()
     await page.wait_for_timeout(1500)
+    await _verificar_erro_pagina(page)
     _log("Aba Vale-Frete aberta.")
 
 
@@ -423,6 +437,36 @@ async def preencher_observacao(page, observacao: str):
     await page.keyboard.type(observacao, delay=30)
     await page.wait_for_timeout(500)
     _log(f"Observacao preenchida: {observacao}")
+
+
+async def _clicar_radio_calculo(page, value):
+    await page.evaluate(f"""
+        () => {{
+            const el = document.querySelector('input[name="manifest[calculation_type]"][value="{value}"]');
+            if (el) {{
+                const div = el.closest('div.radio') || el.parentElement;
+                div.scrollIntoView({{block: 'center'}});
+            }}
+        }}
+    """)
+    await page.wait_for_timeout(300)
+    pos = await page.evaluate(f"""
+        () => {{
+            const el = document.querySelector('input[name="manifest[calculation_type]"][value="{value}"]');
+            if (el) {{
+                const div = el.closest('div.radio') || el.parentElement;
+                const r = div.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) return {{x: r.left + r.width / 2, y: r.top + r.height / 2}};
+            }}
+            return null;
+        }}
+    """)
+    if pos:
+        await page.mouse.click(pos['x'], pos['y'])
+        _log(f"Radio calculation_type='{value}' clicado em ({pos['x']:.0f}, {pos['y']:.0f}).")
+    else:
+        _log(f"AVISO: radio calculation_type='{value}' nao encontrado.")
+    await page.wait_for_timeout(800)
 
 
 async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo_motorista="Dedicado", tabela_preco=""):
@@ -453,26 +497,7 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
     _log(f"Cidade destino: {cidade_destino}")
 
     if tipo == "Tabela":
-        _log(f"Tipo Tabela: selecionando radio price_table...")
-        # uniform.js — clicar no span.checker que envolve o radio #calculation_type
-        radio_pos = await page.evaluate("""
-            () => {
-                const el = document.querySelector('span.checker input#calculation_type[value="price_table"]');
-                if (el) {
-                    const span = el.closest('span.checker') || el.parentElement;
-                    const r = span.getBoundingClientRect();
-                    if (r.width > 0 && r.height > 0) return {x: r.left + r.width / 2, y: r.top + r.height / 2};
-                }
-                return null;
-            }
-        """)
-        if radio_pos:
-            await page.mouse.click(radio_pos['x'], radio_pos['y'])
-            _log("Radio 'price_table' clicado.")
-        else:
-            _log("AVISO: radio price_table nao encontrado, tentando locator direto...")
-            await page.locator("input#calculation_type[value='price_table']").click(force=True)
-        await page.wait_for_timeout(800)
+        await _clicar_radio_calculo(page, "price_table")
 
         if tabela_preco:
             _log(f"Selecionando tabela de preco: {tabela_preco}")
@@ -493,13 +518,17 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
         _log("Calculo concluido.")
 
     elif tipo == "Frota":
-        _log("Tipo Frota: sem valor de frete (CLT), apenas origem/destino ja preenchidos.")
+        await _clicar_radio_calculo(page, "agreed")
 
     else:
-        _log(f"Tipo {tipo_motorista}: preenchendo valor do frete manual: {valor_frete}")
+        _log(f"Tipo {tipo_motorista}: preenchendo valor: {valor_frete}")
+        await _clicar_radio_calculo(page, "agreed")
         inteiro, centavos = _normalizar_frete(valor_frete)
         campo = page.locator("#closed_freight_subtotal")
-        await campo.wait_for(state="attached", timeout=10000)
+        await page.wait_for_function(
+            "() => { const el = document.querySelector('#closed_freight_subtotal'); return el && !el.disabled; }",
+            timeout=15000
+        )
         await campo.scroll_into_view_if_needed()
         await campo.click()
         await page.keyboard.press("Control+a")
