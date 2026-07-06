@@ -257,10 +257,14 @@ async def inserir_nota_fiscal(page, nota):
     await container.click()
     await page.wait_for_timeout(800)
     await page.keyboard.type(nota)
-    await page.wait_for_timeout(2500)
+    await page.wait_for_selector(
+        f".select2-results__option:has-text('{nota}'), .select2-results__option:has-text('Nenhum resultado')",
+        state="visible",
+        timeout=8000
+    )
     option = page.locator(f".select2-results__option:has-text('{nota}')")
     if await option.count() == 0:
-        raise Exception(f"Nota fiscal '{nota}' nao encontrada no sistema.")
+        raise Exception(f"Nota fiscal '{nota}' nao encontrada no sistema (ja manifestada ou inexistente).")
     await option.first.click()
     await page.wait_for_timeout(4000)
     try:
