@@ -258,10 +258,10 @@ async def inserir_nota_fiscal(page, nota):
     await page.wait_for_timeout(800)
     await page.keyboard.type(nota)
     await page.wait_for_timeout(2500)
-    try:
-        await page.click(f".select2-results__option:has-text('{nota}')", timeout=3000)
-    except Exception:
-        await page.keyboard.press("Enter")
+    option = page.locator(f".select2-results__option:has-text('{nota}')")
+    if await option.count() == 0:
+        raise Exception(f"Nota fiscal '{nota}' nao encontrada no sistema.")
+    await option.first.click()
     await page.wait_for_timeout(4000)
     try:
         if await page.is_visible("text=Frete possui entrega vinculada", timeout=2000):
@@ -270,11 +270,19 @@ async def inserir_nota_fiscal(page, nota):
             await page.wait_for_timeout(1000)
     except Exception:
         pass
-    _log(f"Nota fiscal '{nota}' inserida.")
+    await _verificar_erro_pagina(page)
     await page.reload()
     await page.wait_for_load_state("networkidle")
     await page.wait_for_timeout(3000)
     _log("Pagina recarregada.")
+
+    # Verificar se NF aparece na tabela de entregas
+    await aba.first.click()
+    await page.wait_for_timeout(1500)
+    count = await page.locator(f"#selected-tab-deliveries td:has-text('{nota}')").count()
+    if count == 0:
+        raise Exception(f"Nota fiscal '{nota}' nao encontrada na lista de entregas apos insercao.")
+    _log(f"Nota fiscal '{nota}' inserida e confirmada.")
 
 
 def _pos_visivel(seletor_js):
