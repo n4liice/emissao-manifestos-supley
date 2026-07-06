@@ -255,12 +255,12 @@ async def inserir_nota_fiscal(page, nota):
         "document.querySelector('#selected-tab-deliveries #select2-term-container')?.scrollIntoView()"
     )
     await container.click()
-    await page.wait_for_timeout(800)
+    await page.wait_for_selector(".select2-container--open", state="visible", timeout=5000)
     await page.keyboard.type(nota)
     await page.wait_for_selector(
         f".select2-results__option:has-text('{nota}'), .select2-results__option:has-text('Nenhum resultado')",
         state="visible",
-        timeout=8000
+        timeout=15000
     )
     option = page.locator(f".select2-results__option:has-text('{nota}')")
     if await option.count() == 0:
