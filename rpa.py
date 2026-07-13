@@ -258,13 +258,12 @@ async def inserir_nota_fiscal(page, nota):
     await page.wait_for_timeout(800)
     await page.keyboard.type(nota)
     await page.wait_for_timeout(3000)
-    option = page.locator(f".select2-results__option:has-text('{nota}')")
     nenhum = page.locator(".select2-results__option:has-text('Nenhum resultado')")
-    if await option.count() == 0:
-        if await nenhum.count() > 0:
-            raise Exception(f"Nota fiscal '{nota}' ja manifestada ou inexistente.")
-        raise Exception(f"Nota fiscal '{nota}' nao encontrada no sistema.")
-    await option.first.click()
+    if await nenhum.count() > 0:
+        raise Exception(f"Nota fiscal '{nota}' ja manifestada ou inexistente.")
+    option = page.locator(f".select2-results__option:has-text('{nota}')")
+    if await option.count() > 0:
+        await option.first.click()
     await page.wait_for_timeout(4000)
     try:
         if await page.is_visible("text=Frete possui entrega vinculada", timeout=2000):
