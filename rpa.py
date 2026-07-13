@@ -435,7 +435,10 @@ async def ir_para_aba_vale_frete(page):
     await aba.first.scroll_into_view_if_needed()
     await aba.first.click()
     await page.wait_for_load_state("networkidle", timeout=15000)
-    await page.wait_for_selector("#select2-calculation_origin_city-container", state="visible", timeout=10000)
+    try:
+        await page.wait_for_selector("#select2-calculation_origin_city-container", state="visible", timeout=5000)
+    except Exception:
+        pass
     await _verificar_erro_pagina(page)
     _log("Aba Vale-Frete aberta.")
 
@@ -484,29 +487,31 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
     tipo_upper = tipo_motorista.strip().upper()
     tipo = "Tabela" if "TABELA" in tipo_upper else ("Frota" if "FROTA" in tipo_upper else tipo_motorista.strip().capitalize())
 
-    _log(f"Preenchendo cidade origem: {cidade_origem}")
-    await page.click("#select2-calculation_origin_city-container")
-    await page.wait_for_timeout(800)
-    await page.wait_for_selector(".select2-container--open input.select2-search__field", state="visible", timeout=5000)
-    await page.keyboard.type(cidade_origem, delay=80)
-    await page.wait_for_selector(".select2-results__option:not(.select2-results__option--loading)", state="visible", timeout=10000)
-    await page.click(f".select2-results__option:has-text('{cidade_origem}')")
-    await page.wait_for_timeout(800)
-    _log(f"Cidade origem: {cidade_origem}")
+    if cidade_origem:
+        _log(f"Preenchendo cidade origem: {cidade_origem}")
+        await page.click("#select2-calculation_origin_city-container")
+        await page.wait_for_timeout(800)
+        await page.wait_for_selector(".select2-container--open input.select2-search__field", state="visible", timeout=5000)
+        await page.keyboard.type(cidade_origem, delay=80)
+        await page.wait_for_selector(".select2-results__option:not(.select2-results__option--loading)", state="visible", timeout=10000)
+        await page.click(f".select2-results__option:has-text('{cidade_origem}')")
+        await page.wait_for_timeout(800)
+        _log(f"Cidade origem: {cidade_origem}")
 
-    _log(f"Preenchendo cidade destino: {cidade_destino}")
-    await page.click("#select2-calculation_destination_city-container")
-    await page.wait_for_timeout(800)
-    await page.wait_for_selector(".select2-container--open input.select2-search__field", state="visible", timeout=5000)
-    await page.keyboard.type(cidade_destino, delay=80)
-    await page.wait_for_timeout(2000)
-    await page.wait_for_selector(
-        "#select2-calculation_destination_city-results .select2-results__option",
-        state="visible", timeout=8000
-    )
-    await page.click("#select2-calculation_destination_city-results .select2-results__option:first-child")
-    await page.wait_for_timeout(800)
-    _log(f"Cidade destino: {cidade_destino}")
+    if cidade_destino:
+        _log(f"Preenchendo cidade destino: {cidade_destino}")
+        await page.click("#select2-calculation_destination_city-container")
+        await page.wait_for_timeout(800)
+        await page.wait_for_selector(".select2-container--open input.select2-search__field", state="visible", timeout=5000)
+        await page.keyboard.type(cidade_destino, delay=80)
+        await page.wait_for_timeout(2000)
+        await page.wait_for_selector(
+            "#select2-calculation_destination_city-results .select2-results__option",
+            state="visible", timeout=8000
+        )
+        await page.click("#select2-calculation_destination_city-results .select2-results__option:first-child")
+        await page.wait_for_timeout(800)
+        _log(f"Cidade destino: {cidade_destino}")
 
     if tipo == "Tabela":
         await _clicar_radio_calculo(page, "price_table")
