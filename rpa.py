@@ -482,7 +482,6 @@ async def _clicar_radio_calculo(page, value):
 async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo_motorista="Dedicado", tabela_preco=""):
     tipo_upper = tipo_motorista.strip().upper()
     tipo = "Tabela" if "TABELA" in tipo_upper else ("Frota" if "FROTA" in tipo_upper else tipo_motorista.strip().capitalize())
-    _log(f"preencher_frete | tipo_motorista='{tipo_motorista}' | tipo_upper='{tipo_upper}' | tipo='{tipo}'")
 
     _log(f"Preenchendo cidade origem: {cidade_origem}")
     await page.click("#select2-calculation_origin_city-container")
