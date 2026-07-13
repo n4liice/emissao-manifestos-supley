@@ -434,7 +434,8 @@ async def ir_para_aba_vale_frete(page):
     await aba.first.wait_for(state="visible", timeout=10000)
     await aba.first.scroll_into_view_if_needed()
     await aba.first.click()
-    await page.wait_for_timeout(1500)
+    await page.wait_for_load_state("networkidle", timeout=15000)
+    await page.wait_for_selector("#select2-calculation_origin_city-container", state="visible", timeout=10000)
     await _verificar_erro_pagina(page)
     _log("Aba Vale-Frete aberta.")
 
