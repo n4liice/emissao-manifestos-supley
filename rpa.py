@@ -255,18 +255,15 @@ async def inserir_nota_fiscal(page, nota):
         "document.querySelector('#selected-tab-deliveries #select2-term-container')?.scrollIntoView()"
     )
     await container.click()
-    search = page.locator("#selected-tab-deliveries .select2-container--open input.select2-search__field,"
-                          "#selected-tab-deliveries input.select2-search__field")
-    await search.first.wait_for(state="visible", timeout=5000)
-    await search.first.fill(nota)
+    await page.wait_for_timeout(800)
+    await page.keyboard.type(nota)
     await page.wait_for_timeout(3000)
     option = page.locator(f".select2-results__option:has-text('{nota}')")
     nenhum = page.locator(".select2-results__option:has-text('Nenhum resultado')")
     if await option.count() == 0:
-        msg = "ja manifestada ou inexistente"
         if await nenhum.count() > 0:
-            msg = "ja manifestada (nenhum resultado no sistema)"
-        raise Exception(f"Nota fiscal '{nota}' nao encontrada: {msg}.")
+            raise Exception(f"Nota fiscal '{nota}' ja manifestada ou inexistente.")
+        raise Exception(f"Nota fiscal '{nota}' nao encontrada no sistema.")
     await option.first.click()
     await page.wait_for_timeout(4000)
     try:
