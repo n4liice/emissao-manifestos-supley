@@ -553,10 +553,7 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
         _log(f"Tipo {tipo_motorista}: preenchendo valor: {valor_frete}")
         inteiro, centavos = _normalizar_frete(valor_frete)
         campo = page.locator("#closed_freight_subtotal")
-        await page.wait_for_function(
-            "() => { const el = document.querySelector('#closed_freight_subtotal'); return el && !el.disabled; }",
-            timeout=15000
-        )
+        await campo.wait_for(state="visible", timeout=20000)
         await campo.scroll_into_view_if_needed()
         await campo.click()
         await page.keyboard.press("Control+a")
