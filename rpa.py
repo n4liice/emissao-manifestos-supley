@@ -430,6 +430,13 @@ async def inserir_referencia_oc(page, referencia):
 
 
 async def ir_para_aba_vale_frete(page):
+    # Aguardar modal de progresso do ESL fechar antes de clicar na aba
+    try:
+        await page.wait_for_selector("#async-progress-bar", state="hidden", timeout=90000)
+        _log("Modal de progresso fechado.")
+    except Exception:
+        pass
+
     aba = page.locator("a:has-text('Vale-Frete'), li:has-text('Vale-Frete') a")
     await aba.first.wait_for(state="visible", timeout=10000)
     await aba.first.scroll_into_view_if_needed()
