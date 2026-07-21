@@ -487,6 +487,12 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
     tipo_upper = tipo_motorista.strip().upper()
     tipo = "Tabela" if "TABELA" in tipo_upper else ("Frota" if "FROTA" in tipo_upper else tipo_motorista.strip().capitalize())
 
+    # Clicar no radio antes de preencher cidades (desbloqueia os campos)
+    if tipo == "Tabela":
+        await _clicar_radio_calculo(page, "price_table")
+    else:
+        await _clicar_radio_calculo(page, "agreed")
+
     if cidade_origem:
         _log(f"Preenchendo cidade origem: {cidade_origem}")
         await page.click("#select2-calculation_origin_city-container")
@@ -514,7 +520,6 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
         _log(f"Cidade destino: {cidade_destino}")
 
     if tipo == "Tabela":
-        await _clicar_radio_calculo(page, "price_table")
 
         if tabela_preco:
             _log(f"Selecionando tabela de preco: {tabela_preco}")
@@ -535,11 +540,10 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
         _log("Calculo concluido.")
 
     elif tipo == "Frota":
-        await _clicar_radio_calculo(page, "agreed")
+        pass  # radio já clicado acima
 
     else:
         _log(f"Tipo {tipo_motorista}: preenchendo valor: {valor_frete}")
-        await _clicar_radio_calculo(page, "agreed")
         inteiro, centavos = _normalizar_frete(valor_frete)
         campo = page.locator("#closed_freight_subtotal")
         await page.wait_for_function(
