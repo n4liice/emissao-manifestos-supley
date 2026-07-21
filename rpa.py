@@ -552,8 +552,18 @@ async def preencher_frete(page, cidade_origem, cidade_destino, valor_frete, tipo
     else:
         _log(f"Tipo {tipo_motorista}: preenchendo valor: {valor_frete}")
         inteiro, centavos = _normalizar_frete(valor_frete)
-        campo = page.locator("#closed_freight_subtotal")
-        await campo.wait_for(state="visible", timeout=20000)
+        campo = None
+        for sel in ["#freight_subtotal", "#closed_freight_subtotal"]:
+            try:
+                el = page.locator(sel)
+                await el.wait_for(state="visible", timeout=8000)
+                campo = el
+                _log(f"Campo valor frete encontrado: {sel}")
+                break
+            except Exception:
+                continue
+        if campo is None:
+            raise Exception("Campo de valor frete nao encontrado apos selecionar radio")
         await campo.scroll_into_view_if_needed()
         await campo.click()
         await page.keyboard.press("Control+a")
