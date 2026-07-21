@@ -26,8 +26,8 @@ class ManifestoInput(BaseModel):
     tipo_nota: str                             # "nf" | "oc" | "sem_nota"
     notas_fiscais: Optional[List[str]] = None  # usado quando tipo_nota = "nf"
     referencias: Optional[List[str]] = None   # usado quando tipo_nota = "oc"
-    cidade_origem: str
-    cidade_destino: str
+    cidade_origem: Optional[str] = None
+    cidade_destino: Optional[str] = None
     valor_frete: Optional[str] = None         # usado quando tipo_motorista != "Tabela" e != "Frota"
     data_frete: Optional[str] = None          # formato DD/MM/YYYY; se omitido usa hoje
     tabela_preco: Optional[str] = None        # obrigatório quando tipo_motorista = "Tabela"
@@ -60,8 +60,8 @@ async def emitir(body: ManifestoInput, x_api_key: Optional[str] = Header(None)):
         "tipo_nota":       body.tipo_nota,
         "notas_fiscais":   body.notas_fiscais or [],
         "referencias":     body.referencias or [],
-        "cidade_origem":   body.cidade_origem,
-        "cidade_destino":  body.cidade_destino,
+        "cidade_origem":   body.cidade_origem or "",
+        "cidade_destino":  body.cidade_destino or "",
         "valor_frete":     body.valor_frete or "",
         "data_frete":      body.data_frete or "",
         "tabela_preco":    body.tabela_preco or "",
